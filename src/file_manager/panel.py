@@ -613,11 +613,26 @@ class FileManagerPanel(QWidget):
                 parent = source_index.parent()
                 row = source_index.row()
                 
-                if row > 0:
+                prev_index = None
+                prev_proxy_index = None
+                
+                # 循环查找前一个有效的文件
+                search_row = row - 1
+                while search_row >= 0:
                     # 同一级别中的上一个文件
-                    prev_index = source_model.index(row - 1, 0, parent)
-                else:
-                    # 需要检查父级是否有上一个兄弟节点
+                    prev_index = source_model.index(search_row, 0, parent)
+                    if prev_index.isValid():
+                        # 检查是否是文件且支持预览
+                        file_path = source_model.filePath(prev_index)
+                        if os.path.isfile(file_path) and self.is_supported_file(file_path):
+                            # 映射回代理模型
+                            prev_proxy_index = proxy_model.mapFromSource(prev_index)
+                            if prev_proxy_index.isValid():
+                                break
+                    search_row -= 1
+                
+                # 如果没找到，检查父级是否有上一个兄弟节点
+                if not (prev_proxy_index and prev_proxy_index.isValid()):
                     parent_row = parent.row()
                     if parent_row > 0:
                         parent_parent = parent.parent()
@@ -625,21 +640,26 @@ class FileManagerPanel(QWidget):
                         # 获取该父节点的最后一个子节点
                         prev_parent_row_count = source_model.rowCount(prev_parent_index)
                         if prev_parent_row_count > 0:
-                            prev_index = source_model.index(prev_parent_row_count - 1, 0, prev_parent_index)
-                        else:
-                            prev_index = prev_parent_index
-                    else:
-                        # 没有上一个节点
-                        prev_index = None
+                            # 从最后一个子节点开始向前查找
+                            search_row = prev_parent_row_count - 1
+                            while search_row >= 0:
+                                prev_index = source_model.index(search_row, 0, prev_parent_index)
+                                if prev_index.isValid():
+                                    file_path = source_model.filePath(prev_index)
+                                    if os.path.isfile(file_path) and self.is_supported_file(file_path):
+                                        prev_proxy_index = proxy_model.mapFromSource(prev_index)
+                                        if prev_proxy_index.isValid():
+                                            break
+                                search_row -= 1
+                        elif os.path.isfile(source_model.filePath(prev_parent_index)) and self.is_supported_file(source_model.filePath(prev_parent_index)):
+                            # 父节点本身是文件
+                            prev_proxy_index = proxy_model.mapFromSource(prev_parent_index)
                 
-                if prev_index and prev_index.isValid():
-                    # 映射回代理模型
-                    proxy_index = proxy_model.mapFromSource(prev_index)
-                    if proxy_index.isValid():
-                        # 选中该索引
-                        self.ui.tree_view.setCurrentIndex(proxy_index)
-                        # 触发点击事件
-                        self.on_item_clicked(proxy_index)
+                if prev_proxy_index and prev_proxy_index.isValid():
+                    # 选中该索引
+                    self.ui.tree_view.setCurrentIndex(prev_proxy_index)
+                    # 触发点击事件
+                    self.on_item_clicked(prev_proxy_index)
         except Exception as e:
             logger.error(f"选择前一个文件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -666,11 +686,26 @@ class FileManagerPanel(QWidget):
                 row = source_index.row()
                 row_count = source_model.rowCount(parent)
                 
-                if row < row_count - 1:
+                next_index = None
+                next_proxy_index = None
+                
+                # 循环查找后一个有效的文件
+                search_row = row + 1
+                while search_row < row_count:
                     # 同一级别中的下一个文件
-                    next_index = source_model.index(row + 1, 0, parent)
-                else:
-                    # 需要检查父级是否有下一个兄弟节点
+                    next_index = source_model.index(search_row, 0, parent)
+                    if next_index.isValid():
+                        # 检查是否是文件且支持预览
+                        file_path = source_model.filePath(next_index)
+                        if os.path.isfile(file_path) and self.is_supported_file(file_path):
+                            # 映射回代理模型
+                            next_proxy_index = proxy_model.mapFromSource(next_index)
+                            if next_proxy_index.isValid():
+                                break
+                    search_row += 1
+                
+                # 如果没找到，检查父级是否有下一个兄弟节点
+                if not (next_proxy_index and next_proxy_index.isValid()):
                     parent_row = parent.row()
                     parent_row_count = source_model.rowCount(parent.parent())
                     if parent_row < parent_row_count - 1:
@@ -678,21 +713,27 @@ class FileManagerPanel(QWidget):
                         next_parent_index = source_model.index(parent_row + 1, 0, parent_parent)
                         # 获取该父节点的第一个子节点
                         if source_model.hasChildren(next_parent_index):
-                            next_index = source_model.index(0, 0, next_parent_index)
-                        else:
-                            next_index = next_parent_index
-                    else:
-                        # 没有下一个节点
-                        next_index = None
+                            # 从第一个子节点开始向后查找
+                            search_row = 0
+                            child_row_count = source_model.rowCount(next_parent_index)
+                            while search_row < child_row_count:
+                                next_index = source_model.index(search_row, 0, next_parent_index)
+                                if next_index.isValid():
+                                    file_path = source_model.filePath(next_index)
+                                    if os.path.isfile(file_path) and self.is_supported_file(file_path):
+                                        next_proxy_index = proxy_model.mapFromSource(next_index)
+                                        if next_proxy_index.isValid():
+                                            break
+                                search_row += 1
+                        elif os.path.isfile(source_model.filePath(next_parent_index)) and self.is_supported_file(source_model.filePath(next_parent_index)):
+                            # 父节点本身是文件
+                            next_proxy_index = proxy_model.mapFromSource(next_parent_index)
                 
-                if next_index and next_index.isValid():
-                    # 映射回代理模型
-                    proxy_index = proxy_model.mapFromSource(next_index)
-                    if proxy_index.isValid():
-                        # 选中该索引
-                        self.ui.tree_view.setCurrentIndex(proxy_index)
-                        # 触发点击事件
-                        self.on_item_clicked(proxy_index)
+                if next_proxy_index and next_proxy_index.isValid():
+                    # 选中该索引
+                    self.ui.tree_view.setCurrentIndex(next_proxy_index)
+                    # 触发点击事件
+                    self.on_item_clicked(next_proxy_index)
         except Exception as e:
             logger.error(f"选择后一个文件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -730,3 +771,35 @@ class FileManagerPanel(QWidget):
         except Exception as e:
             logger.error(f"处理键盘按键事件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+    def is_supported_file(self, file_path):
+        """
+        检查文件是否支持预览
+        
+        Args:
+            file_path (str): 文件路径
+            
+        Returns:
+            bool: 如果文件支持预览返回True，否则返回False
+        """
+        try:
+            if not os.path.isfile(file_path):
+                return False
+                
+            # 获取文件扩展名
+            _, ext = os.path.splitext(file_path)
+            ext = ext.lower()
+            
+            # 支持的文件格式列表
+            supported_formats = [
+                '.jpg', '.jpeg', '.png', '.bmp', '.gif',  # 图片格式
+                '.mp4', '.avi', '.mov', '.wmv', '.flv'    # 视频格式
+            ]
+            
+            return ext in supported_formats
+        except Exception as e:
+            logger.error(f"检查文件是否支持预览时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            return False
+
+

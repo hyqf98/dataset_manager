@@ -1,21 +1,26 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QListWidget, QSplitter, QMenu, QAction, QApplication
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QCursor, QKeyEvent
 from ..logging_config import logger
+from ..preview.image_details import ImageDetailsPanel
+from ..preview.video_details import VideoDetailsPanel
 
 
 class DetailsPanel(QWidget):
     """
     详情面板类，用于显示选中文件的详细信息
+    这是一个通用面板，根据文件类型显示不同的详情视图
     """
 
-    # 定义信号，用于通知图片标签选中状态变化
+    # 定义信号，用于通知图片标签选中状态变化（转发自ImageDetailsPanel）
     rectangle_selected = pyqtSignal(object)  # 发送选中的矩形框信息
     rectangles_highlighted = pyqtSignal(list)  # 发送需要高亮的矩形框列表
     tag_selected = pyqtSignal(list)  # 发送选中的标签列表
     highlights_cleared = pyqtSignal()  # 发送清除高亮信号
     annotation_deleted = pyqtSignal(dict)  # 发送需要删除的标注信息
     polygon_selected = pyqtSignal(int)  # 发送选中的多边形索引
+    polygons_highlighted = pyqtSignal(list)  # 发送需要高亮的多边形列表
+    polygon_indices_highlighted = pyqtSignal(list)  # 发送需要高亮的多边形索引列表
+    annotation_selected = pyqtSignal(dict)  # 统一发送选中的标注信息
 
     def __init__(self):
         """
@@ -23,11 +28,9 @@ class DetailsPanel(QWidget):
         """
         super().__init__()
         self.current_file_path = None
-        self.image_label = None  # 对应的图片标注组件
-        self.annotations_data = []  # 存储当前的标注数据
-        self.selected_annotation = None  # 当前选中的标注信息（统一存储，不再区分类型）
-        self.last_tag_selected_row = -1  # 上次选中的标签行号，用于Shift键批量选择
-        self.last_annotation_selected_row = -1  # 上次选中的标注详情行号，用于Shift键批量选择
+        self.current_view = None  # 当前显示的详情视图
+        self.image_details = None  # 图片详情视图
+        self.video_details = None  # 视频详情视图
         self.init_ui()
 
     def init_ui(self):
@@ -35,145 +38,111 @@ class DetailsPanel(QWidget):
         初始化详情面板的用户界面
         """
         layout = QVBoxLayout(self)
-
-        # 创建分割器实现上下布局 (4:6比例)
-        splitter = QSplitter(Qt.Vertical)
-
-        # 上部分：显示当前图片的标签列表
-        self.tags_label = QLabel("图片标签:")
-        self.tags_list = QListWidget()
-        self.tags_list.setSelectionMode(QListWidget.ExtendedSelection)  # 启用多选模式
-
-        # 下部分：显示标签和点位信息
-        self.annotations_label = QLabel("标注详情:")
-        self.annotations_list = QListWidget()
-        self.annotations_list.setSelectionMode(QListWidget.ExtendedSelection)  # 启用多选模式
-
-        # 启用右键菜单
-        self.tags_list.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tags_list.customContextMenuRequested.connect(self.show_tags_context_menu)
-
-        self.annotations_list.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.annotations_list.customContextMenuRequested.connect(self.show_annotations_context_menu)
-
-        # 连接点击事件
-        self.tags_list.itemClicked.connect(self.on_tag_item_clicked)
-        self.annotations_list.itemClicked.connect(self.on_annotation_item_clicked)
-
-        # 连接鼠标点击事件到列表本身（处理点击空白区域）
-        self.tags_list.clicked.connect(self.on_tag_list_clicked)
-        self.annotations_list.clicked.connect(self.on_annotation_list_clicked)
-
-        # 创建包含标签和列表的widget
-        tags_widget = QWidget()
-        tags_layout = QVBoxLayout(tags_widget)
-        tags_layout.addWidget(self.tags_label)
-        tags_layout.addWidget(self.tags_list)
-
-        annotations_widget = QWidget()
-        annotations_layout = QVBoxLayout(annotations_widget)
-        annotations_layout.addWidget(self.annotations_label)
-        annotations_layout.addWidget(self.annotations_list)
-
-        # 添加到分割器
-        splitter.addWidget(tags_widget)
-        splitter.addWidget(annotations_widget)
-
-        # 设置初始大小比例为4:6
-        splitter.setSizes([400, 600])
-
-        layout.addWidget(splitter)
+        self.label = QLabel("请选择文件查看详细信息")
+        self.label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.label)
         self.setLayout(layout)
 
-    def keyPressEvent(self, event: QKeyEvent):
+    def update_details(self, file_path, preview_component=None):
         """
-        处理键盘按键事件
-
-        Args:
-            event: 键盘事件
-        """
-        # 处理Delete键事件
-        if event.key() == Qt.Key_Delete:
-            # 检查是否有选中的标签
-            selected_tags = self.tags_list.selectedItems()
-            if selected_tags:
-                # 删除选中的标签
-                self.delete_selected_tags()
-                return
-
-            # 检查是否有选中的标注详情
-            selected_annotations = self.annotations_list.selectedItems()
-            if selected_annotations:
-                # 删除选中的标注详情
-                self.delete_selected_annotations()
-                return
-
-        super().keyPressEvent(event)
-
-    def update_details(self, file_path, image_label=None):
-        """
-        更新详情面板显示的内容
+        根据文件类型更新详情面板显示的内容
 
         Args:
             file_path (str): 文件路径
-            image_label (ImageLabel): 图片标注组件
+            preview_component: 预览组件（ImageLabel或VideoPlayer）
         """
         self.current_file_path = file_path
-        self.image_label = image_label
+        
+        # 根据文件扩展名确定文件类型
+        if file_path:
+            ext = file_path.split('.')[-1].lower()
+            
+            # 图片文件类型
+            image_extensions = ['jpg', 'jpeg', 'png', 'bmp', 'gif']
+            # 视频文件类型
+            video_extensions = ['mp4', 'avi', 'mov', 'wmv', 'flv']
+            
+            # 清除当前布局中的所有组件
+            self.clear_layout()
+            
+            if ext in image_extensions:
+                self.show_image_details(file_path, preview_component)
+            elif ext in video_extensions:
+                self.show_video_details(file_path, preview_component)
+            else:
+                # 不支持的文件类型
+                self.label = QLabel("不支持的文件类型")
+                self.label.setAlignment(Qt.AlignCenter)
+                self.layout().addWidget(self.label)
+        else:
+            # 没有文件路径
+            self.clear_layout()
+            self.label = QLabel("请选择文件查看详细信息")
+            self.label.setAlignment(Qt.AlignCenter)
+            self.layout().addWidget(self.label)
 
-        # 保存当前选中的项信息
-        current_selected_row = self.annotations_list.currentRow()
-        current_selected_info = None
-        if 0 <= current_selected_row < len(self.annotations_data):
-            current_selected_info = self.annotations_data[current_selected_row]
+    def clear_layout(self):
+        """
+        清除布局中的所有组件
+        """
+        # 移除布局中的所有widget
+        while self.layout().count():
+            child = self.layout().takeAt(0)
+            if child.widget():
+                # 不要删除widget，只需从布局中移除
+                child.widget().setParent(None)
 
-        # 清空现有内容
-        self.tags_list.clear()
-        self.annotations_list.clear()
+    def show_image_details(self, file_path, image_label=None):
+        """
+        显示图片详情视图
 
-        # 如果是图片文件且有标注组件，显示标注信息
-        if image_label and hasattr(image_label, 'get_annotations'):
-            self.annotations_data = image_label.get_annotations()
+        Args:
+            file_path (str): 图片文件路径
+            image_label (ImageLabel): 图片标注组件
+        """
+        # 创建或重用图片详情视图
+        if not self.image_details:
+            self.image_details = ImageDetailsPanel()
+            # 连接信号
+            self.image_details.rectangle_selected.connect(self.rectangle_selected)
+            self.image_details.rectangles_highlighted.connect(self.rectangles_highlighted)
+            self.image_details.tag_selected.connect(self.tag_selected)
+            self.image_details.highlights_cleared.connect(self.highlights_cleared)
+            self.image_details.annotation_deleted.connect(self.annotation_deleted)
+            self.image_details.polygon_selected.connect(self.polygon_selected)
+            self.image_details.polygons_highlighted.connect(self.polygons_highlighted)
+            self.image_details.polygon_indices_highlighted.connect(self.polygon_indices_highlighted)
+            self.image_details.annotation_selected.connect(self.annotation_selected)
+        
+        # 更新详情信息
+        self.image_details.update_details(file_path, image_label)
+        
+        # 设置为当前视图
+        self.current_view = self.image_details
+        
+        # 添加到布局
+        self.layout().addWidget(self.image_details)
 
-            # 提取所有唯一的标签
-            tags = set()
-            for annotation in self.annotations_data:
-                if annotation.get('label'):
-                    tags.add(annotation['label'])
+    def show_video_details(self, file_path, video_player=None):
+        """
+        显示视频详情视图
 
-            # 显示标签列表
-            for tag in sorted(tags):
-                self.tags_list.addItem(tag)
-
-            # 显示标注详情
-            selected_row = -1
-            for i, annotation in enumerate(self.annotations_data):
-                if annotation['type'] == 'rectangle':
-                    label = annotation.get('label', '未标记')
-                    rect = annotation['rectangle']
-                    item_text = f"[矩形] {label}: ({rect.x()}, {rect.y()}, {rect.width()}, {rect.height()})"
-                    self.annotations_list.addItem(item_text)
-                elif annotation['type'] == 'polygon':
-                    label = annotation.get('label', '未标记')
-                    points = annotation['points']
-                    points_str = ', '.join([f"({p.x()}, {p.y()})" for p in points])
-                    item_text = f"[多边形] {label}: {points_str}"
-                    self.annotations_list.addItem(item_text)
-
-                # 检查是否需要恢复选中状态
-                if (current_selected_info and
-                    annotation['type'] == current_selected_info['type'] and
-                    annotation.get('label') == current_selected_info.get('label')):
-                    if (annotation['type'] == 'rectangle' and
-                        annotation['rectangle'] == current_selected_info['rectangle']):
-                        selected_row = i
-                    elif (annotation['type'] == 'polygon' and
-                          annotation['points'] == current_selected_info['points']):
-                        selected_row = i
-
-            # 如果找到了之前选中的项，恢复选中状态
-            if selected_row >= 0:
-                self.annotations_list.setCurrentRow(selected_row)
+        Args:
+            file_path (str): 视频文件路径
+            video_player (VideoPlayer): 视频播放器组件
+        """
+        # 创建或重用视频详情视图
+        if not self.video_details:
+            self.video_details = VideoDetailsPanel()
+        
+        # 更新详情信息
+        self.video_details.update_details(file_path, video_player)
+        
+        # 设置为当前视图
+        self.current_view = self.video_details
+        
+        # 添加到布局
+        self.layout().addWidget(self.video_details)
 
     def select_annotation_in_image(self, annotation):
         """
@@ -182,335 +151,6 @@ class DetailsPanel(QWidget):
         Args:
             annotation: 被选中的标注对象(矩形或多边形)
         """
-        logger.debug(f"详情面板处理图片选中事件: annotation={annotation}")
-
-        # 处理取消选中的情况
-        if annotation is None:
-            # 清除所有选中状态
-            self.selected_annotation = None
-            self.annotations_list.clearSelection()
-            logger.debug("详情面板清除所有选中状态")
-            return
-
-        # 只有当当前选中的不是这个标注时才更新
-        if self.selected_annotation != annotation:
-            # 保存选中的标注信息（统一保存，不再区分矩形或多边形）
-            self.selected_annotation = annotation
-            logger.debug(f"详情面板选中标注: {annotation}")
-        else:
-            # 如果已经是选中的标注，则不需要更新
-            return
-
-        # 遍历标注数据，通过标签名称和点位信息来匹配并选中对应的列表项
-        for i, anno_data in enumerate(self.annotations_data):
-            # 处理矩形类型匹配
-            if (hasattr(annotation, 'rectangle') and hasattr(annotation, 'label') and
-                anno_data['type'] == 'rectangle'):
-                if (anno_data['rectangle'] == annotation.rectangle and
-                    anno_data.get('label') == annotation.label):
-                    # 清除当前选择
-                    self.annotations_list.clearSelection()
-                    # 选中对应的列表项
-                    item = self.annotations_list.item(i)
-                    if item:  # 确保项存在
-                        item.setSelected(True)
-                        # 确保选中的项可见
-                        self.annotations_list.scrollToItem(item)
-                        logger.debug(f"详情面板选中列表项[{i}]: {item.text()}")
-                    # 找到匹配项后立即返回，避免继续循环
-                    return
-            # 处理多边形类型匹配
-            elif (hasattr(annotation, 'points') and hasattr(annotation, 'label') and
-                  anno_data['type'] == 'polygon'):
-                if (anno_data['points'] == annotation.points and
-                    anno_data.get('label') == annotation.label):
-                    # 清除当前选择
-                    self.annotations_list.clearSelection()
-                    # 选中对应的列表项
-                    item = self.annotations_list.item(i)
-                    if item:  # 确保项存在
-                        item.setSelected(True)
-                        # 确保选中的项可见
-                        self.annotations_list.scrollToItem(item)
-                        logger.debug(f"详情面板选中列表项[{i}]: {item.text()}")
-                    # 找到匹配项后立即返回，避免继续循环
-                    return
-
-    def on_tag_list_clicked(self, index):
-        """
-        处理标签列表点击事件（包括点击空白区域）
-
-        Args:
-            index: 被点击的索引
-        """
-        # 如果点击的是空白区域（没有项目被点击）
-        if not self.tags_list.itemFromIndex(index):
-            # 清除所有选择
-            self.tags_list.clearSelection()
-            # 发送清除高亮信号
-
-    def on_annotation_list_clicked(self, index):
-        """
-        处理标注详情列表点击事件（包括点击空白区域）
-
-        Args:
-            index: 被点击的索引
-        """
-        # 如果点击的是空白区域（没有项目被点击）
-        if not self.annotations_list.itemFromIndex(index):
-            # 清除所有选择
-            self.annotations_list.clearSelection()
-            # 发送清除高亮信号
-
-    def on_tag_item_clicked(self, item):
-        """
-        处理标签项点击事件 - 高亮所有相同标签的标注框（不可编辑）
-
-        Args:
-            item: 被点击的标签项
-        """
-        # 获取当前点击的修饰键
-        modifiers = QApplication.keyboardModifiers()
-
-        row = self.tags_list.row(item)
-
-        # 处理Ctrl键（添加/移除单个选择）
-        if modifiers == Qt.ControlModifier:
-            if item.isSelected():
-                item.setSelected(False)
-            else:
-                item.setSelected(True)
-                self.last_tag_selected_row = row
-        # 处理Shift键（批量选择）
-        elif modifiers == Qt.ShiftModifier and self.last_tag_selected_row != -1:
-            # 清除之前的选择
-            self.tags_list.clearSelection()
-            # 选择从上次选中到当前选中的范围
-            start_row = min(self.last_tag_selected_row, row)
-            end_row = max(self.last_tag_selected_row, row)
-            for i in range(start_row, end_row + 1):
-                self.tags_list.item(i).setSelected(True)
-        else:
-            # 正常单选
-            self.tags_list.clearSelection()
-            item.setSelected(True)
-            self.last_tag_selected_row = row
-
-        # 收集所有选中标签
-        selected_labels = [item.text() for item in self.tags_list.selectedItems()]
-
-        # 发射信号，通知图片标签高亮这些标签对应的所有标注（矩形和多边形）
-        if selected_labels:
-            self.tag_selected.emit(selected_labels)
-        else:
-            # 如果没有选中的标签，清除高亮
-            # self.highlights_cleared.emit()  # 移除此行
-            pass
-
-    def on_annotation_item_clicked(self, item):
-        """
-        处理标注详情项点击事件 - 选中对应标注框（可编辑）
-
-        Args:
-            item: 被点击的标注详情项
-        """
-        # 获取当前点击的修饰键
-        modifiers = QApplication.keyboardModifiers()
-
-        row = self.annotations_list.row(item)
-
-        # 处理Ctrl键（添加/移除单个选择）
-        if modifiers == Qt.ControlModifier:
-            if item.isSelected():
-                item.setSelected(False)
-            else:
-                item.setSelected(True)
-                self.last_annotation_selected_row = row
-        # 处理Shift键（批量选择）
-        elif modifiers == Qt.ShiftModifier and self.last_annotation_selected_row != -1:
-            # 清除之前的选择
-            self.annotations_list.clearSelection()
-            # 选择从上次选中到当前选中的范围
-            start_row = min(self.last_annotation_selected_row, row)
-            end_row = max(self.last_annotation_selected_row, row)
-            for i in range(start_row, end_row + 1):
-                self.annotations_list.item(i).setSelected(True)
-        else:
-            # 正常单选
-            self.annotations_list.clearSelection()
-            item.setSelected(True)
-            self.last_annotation_selected_row = row
-
-        # 处理批量选择的情况 - 高亮所有选中的标注框
-        selected_items = self.annotations_list.selectedItems()
-        if len(selected_items) > 0:
-            # 创建一个列表来存储选中的标注对象
-            selected_annotations = []
-            for selected_item in selected_items:
-                row = self.annotations_list.row(selected_item)
-                if 0 <= row < len(self.annotations_data):
-                    # 直接添加标注数据对象
-                    selected_annotations.append(self.annotations_data[row])
-
-            # 如果有选中的标注，发出信号
-            if selected_annotations:
-                # 这里可以根据需要发出不同的信号，具体实现取决于您的需求
-                # 例如，可以发出一个包含所有选中标注的信号
-                pass
-        else:
-            # 如果没有选中的标注，清除高亮
-            # self.highlights_cleared.emit()  # 移除此行
-            pass
-
-    def show_tags_context_menu(self, position):
-        """
-        显示标签列表的右键菜单
-
-        Args:
-            position: 右键点击位置
-        """
-        item = self.tags_list.itemAt(position)
-        if not item:
-            return
-
-        # 创建右键菜单
-        context_menu = QMenu(self)
-        delete_action = QAction("删除标签", self)
-        context_menu.addAction(delete_action)
-
-        # 连接删除动作
-        delete_action.triggered.connect(self.delete_selected_tags)
-
-        # 显示菜单
-        context_menu.exec_(QCursor.pos())
-
-    def show_annotations_context_menu(self, position):
-        """
-        显示标注详情列表的右键菜单
-
-        Args:
-            position: 右键点击位置
-        """
-        item = self.annotations_list.itemAt(position)
-        if not item:
-            return
-
-        # 创建右键菜单
-        context_menu = QMenu(self)
-        delete_action = QAction("删除标注", self)
-        context_menu.addAction(delete_action)
-
-        # 连接删除动作
-        delete_action.triggered.connect(self.delete_selected_annotations)
-
-        # 显示菜单
-        context_menu.exec_(QCursor.pos())
-
-    def delete_selected_tags(self):
-        """
-        删除选中的标签及其相关的所有标注
-        """
-        selected_items = self.tags_list.selectedItems()
-        if not selected_items:
-            return
-
-        # 收集要删除的标注信息
-        annotations_to_delete = []
-        tag_names = [item.text() for item in selected_items]
-
-        for annotation in self.annotations_data:
-            if annotation.get('label') in tag_names:
-                annotations_to_delete.append(annotation)
-
-        # 发射删除信号
-        for annotation in annotations_to_delete:
-            self.annotation_deleted.emit(annotation)
-
-        # 从列表中移除标签项
-        for item in selected_items:
-            self.tags_list.takeItem(self.tags_list.row(item))
-
-        # 重置上次选中的行号
-        self.last_tag_selected_row = -1
-
-    def delete_selected_annotations(self):
-        """
-        删除选中的标注
-        """
-        selected_items = self.annotations_list.selectedItems()
-        if not selected_items:
-            return
-
-        # 收集要删除的行号
-        rows_to_delete = []
-        for item in selected_items:
-            row = self.annotations_list.row(item)
-            if 0 <= row < len(self.annotations_data):
-                rows_to_delete.append(row)
-
-        # 按降序排列行号
-        rows_to_delete.sort(reverse=True)
-
-        # 收集所有要删除的注释数据和对应的列表项
-        items_to_delete = []
-        for row in rows_to_delete:
-            items_to_delete.append({
-                'annotation': self.annotations_data[row],
-                'list_item': self.annotations_list.item(row)
-            })
-
-        # 发射删除信号
-        for item in items_to_delete:
-            self.annotation_deleted.emit(item['annotation'])
-
-        # 从列表中移除项并从数据中移除（按降序）
-        for row in rows_to_delete:
-            # 确保索引仍然有效
-            if row < self.annotations_list.count() and row < len(self.annotations_data):
-                # 从列表中移除项
-                self.annotations_list.takeItem(row)
-                # 从数据中移除
-                del self.annotations_data[row]
-
-        # 重置上次选中的行号
-        self.last_annotation_selected_row = -1
-
-    def delete_tag(self, item):
-        """
-        删除标签及其相关的所有标注
-
-        Args:
-            item: 要删除的标签项
-        """
-        # 为了保持向后兼容，仍然保留这个方法
-        tag_name = item.text()
-        # 收集要删除的标注信息
-        annotations_to_delete = []
-        for annotation in self.annotations_data:
-            if annotation.get('label') == tag_name:
-                annotations_to_delete.append(annotation)
-
-        # 发射删除信号
-        for annotation in annotations_to_delete:
-            self.annotation_deleted.emit(annotation)
-
-        # 从列表中移除标签项
-        self.tags_list.takeItem(self.tags_list.row(item))
-
-    def delete_annotation(self, item):
-        """
-        删除单个标注
-
-        Args:
-            item: 要删除的标注项
-        """
-        # 为了保持向后兼容，仍然保留这个方法
-        row = self.annotations_list.row(item)
-        if 0 <= row < len(self.annotations_data):
-            annotation = self.annotations_data[row]
-            # 发射删除信号
-            self.annotation_deleted.emit(annotation)
-            # 从列表中移除项
-            self.annotations_list.takeItem(row)
-            # 从数据中移除
-            del self.annotations_data[row]
+        # 只有当当前视图为图片详情视图时才处理
+        if self.current_view == self.image_details and self.image_details:
+            self.image_details.select_annotation_in_image(annotation)

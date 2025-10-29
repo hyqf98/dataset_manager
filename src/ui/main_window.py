@@ -118,6 +118,9 @@ class MainWindow(QMainWindow):
             self.details_panel.tag_selected.connect(self.preview_panel.highlight_annotations_by_labels)
             self.details_panel.annotation_deleted.connect(self.preview_panel.delete_annotation)
             self.details_panel.polygon_selected.connect(self.preview_panel.select_polygon)
+            self.details_panel.polygons_highlighted.connect(self.preview_panel.highlight_polygons)
+            self.details_panel.polygon_indices_highlighted.connect(self.preview_panel.highlight_polygon_indices)
+            self.details_panel.annotation_selected.connect(self.preview_panel.select_annotation)
 
             # 连接预览面板的图片上选中标注信号到详情面板
             self.preview_panel.annotation_selected_in_image.connect(self.details_panel.select_annotation_in_image)

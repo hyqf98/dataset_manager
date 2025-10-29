@@ -62,8 +62,8 @@ class PreviewPanel(QWidget):
         self.toolbar_widget.setLayout(self.toolbar)
         self.toolbar_widget.setVisible(False)  # 默认隐藏工具栏
 
-        # 创建快捷键提示标签
-        self.shortcut_label = QLabel("A: 上一个  D: 下一个  Delete: 删除")
+        # 创建快捷键提示标签，添加更详细的说明
+        self.shortcut_label = QLabel("快捷键: A-上一个文件, D-下一个文件, Delete-删除文件/标注, W-开启标注模式, Q-退出标注模式")
         self.shortcut_label.setStyleSheet("""
             QLabel {
                 color: gray;
@@ -206,45 +206,35 @@ class PreviewPanel(QWidget):
 
             # 检查是否按下Ctrl键进行缩放 (支持跨平台: Ctrl on Windows/Linux, Cmd on Mac)
             if modifiers & Qt.ControlModifier:
-                # 计算缩放因子 - 调整为每次滚动变化更大比例，确保5次滚动能达到最大缩放
-                if event.angleDelta().y() > 0:
-                    self.scale_factor *= 1.5  # 放大 (每次放大50%)
+                # 限制缩放次数为10次
+                if (event.angleDelta().y() > 0 and self.scale_factor < 10.0) or \
+                   (event.angleDelta().y() < 0 and self.scale_factor > 0.1):
+                    # 计算缩放因子 - 调整为每次滚动变化更大比例，确保5次滚动能达到最大缩放
+                    if event.angleDelta().y() > 0:
+                        self.scale_factor *= 1.1  # 放大 (每次放大10%)
+                    else:
+                        self.scale_factor *= 0.9  # 缩小 (每次缩小10%)
+                    
+                    logger.debug(f"缩放因子更新为: {self.scale_factor}")
+                    self.update_image_display()
                 else:
-                    self.scale_factor /= 1.5  # 缩小 (每次缩小50%)
+                    logger.debug(f"达到缩放限制: scale_factor={self.scale_factor}")
+                return
 
-                # 限制缩放范围 - 调整缩放范围确保5次滚动能达到极限
-                # 1.5^5 ≈ 7.6，所以最大放大倍数设置为8倍，最小缩小倍数设置为1/8
-                self.scale_factor = max(0.125, min(self.scale_factor, 8.0))
-
-                # 应用缩放
-                scaled_pixmap = self.current_pixmap.scaled(
-                    self.current_pixmap.width() * self.scale_factor,
-                    self.current_pixmap.height() * self.scale_factor,
-                    Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation
-                )
-                self.content_label.setPixmap(scaled_pixmap)
-                self.content_label.resize(scaled_pixmap.size())
-
-                # 调整滚动条位置保持焦点稳定
-                # 这里可以进一步优化以保持缩放中心点不变
-
-                # 重要：处理完后接受事件，避免默认滚动行为
-                event.accept()
-                logger.debug("处理Ctrl+滚轮缩放事件")
-
-            # 检查是否按下Shift键进行水平滚动
+            # Shift+滚轮水平滚动处理保持不变
             elif modifiers & Qt.ShiftModifier:
-                # 水平滚动
-                scroll_bar = self.scroll_area.horizontalScrollBar()
-                scroll_bar.setValue(scroll_bar.value() - event.angleDelta().y())
-                # 接受事件，避免默认垂直滚动行为
-                event.accept()
-                logger.debug("处理Shift+滚轮水平滚动事件")
-            else:
-                # 默认垂直滚动由系统处理
-                super().wheelEvent(event)
-                logger.debug("处理默认垂直滚动事件")
+                # Shift+滚轮水平滚动
+                delta = event.angleDelta().y()
+                current_value = self.scroll_area.horizontalScrollBar().value()
+                self.scroll_area.horizontalScrollBar().setValue(current_value - delta)
+                logger.debug(f"水平滚动: delta={delta}, current_value={current_value}")
+                return
+
+        # 默认的垂直滚动处理
+        if self.scroll_area:
+            # 调用滚动区域的滚轮事件处理
+            self.scroll_area.wheelEvent(event)
+            logger.debug("处理默认垂直滚动事件")
         else:
             super().wheelEvent(event)
 
@@ -255,11 +245,11 @@ class PreviewPanel(QWidget):
         Args:
             event: 键盘事件
         """
-        # 处理Delete键删除当前预览的图片
-        if event.key() == Qt.Key_Delete:
-            # 如果当前显示的是图片标注标签
-            if isinstance(self.scroll_area.widget(), ImageLabel):
-                image_label = self.scroll_area.widget()
+        # 如果当前显示的是图片标注标签
+        if isinstance(self.scroll_area.widget(), ImageLabel):
+            image_label = self.scroll_area.widget()
+            # 处理Delete键删除当前预览的图片
+            if event.key() == Qt.Key_Delete:
                 # 检查是否有选中的标注元素
                 if image_label.has_selected_annotation():
                     # 有选中的标注元素，删除选中的标注
@@ -269,16 +259,31 @@ class PreviewPanel(QWidget):
                 else:
                     # 没有选中的标注元素，删除当前图片
                     self.delete_current_image()
+            # 处理W键开启标注模式
+            elif event.key() == Qt.Key_W:
+                image_label.start_annotation_mode()
+            # 处理Q键退出标注模式
+            elif event.key() == Qt.Key_Q:
+                image_label.exit_annotation_mode()
+            # 处理A/D键切换前后资源
+            elif event.key() == Qt.Key_A:
+                self.switch_to_previous_resource()
+            elif event.key() == Qt.Key_D:
+                self.switch_to_next_resource()
             else:
+                super().keyPressEvent(event)
+        else:
+            # 处理Delete键删除当前预览的图片
+            if event.key() == Qt.Key_Delete:
                 # 非图片标注标签，删除当前图片
                 self.delete_current_image()
-        # 处理A/D键切换前后资源
-        elif event.key() == Qt.Key_A:
-            self.switch_to_previous_resource()
-        elif event.key() == Qt.Key_D:
-            self.switch_to_next_resource()
-        else:
-            super().keyPressEvent(event)
+            # 处理A/D键切换前后资源
+            elif event.key() == Qt.Key_A:
+                self.switch_to_previous_resource()
+            elif event.key() == Qt.Key_D:
+                self.switch_to_next_resource()
+            else:
+                super().keyPressEvent(event)
 
     def delete_current_image(self):
         """
@@ -366,6 +371,8 @@ class PreviewPanel(QWidget):
             self.image_label.annotation_selected_in_image.connect(self.on_image_label_annotation_selected)
 
         self.image_label.set_image(file_path)
+        # 同步缩放因子
+        self.image_label.scale_factor = self.scale_factor
 
         # 只有当当前控件不是我们要设置的image_label时才清理
         if self.scroll_area.widget() != self.image_label:
@@ -414,6 +421,28 @@ class PreviewPanel(QWidget):
             image_label = self.scroll_area.widget()
             image_label.select_polygon(polygon_index)
 
+    def select_annotation(self, annotation_data):
+        """
+        统一选中标注对象（可编辑状态）
+        
+        Args:
+            annotation_data: 标注数据字典，包含type和其他相关信息
+        """
+        if isinstance(self.scroll_area.widget(), ImageLabel):
+            image_label = self.scroll_area.widget()
+            image_label.select_annotation(annotation_data)
+
+    def highlight_polygon_indices(self, polygon_indices):
+        """
+        高亮指定索引的多边形列表（仅高亮，不可编辑）
+
+        Args:
+            polygon_indices: 要高亮的多边形索引列表
+        """
+        if isinstance(self.scroll_area.widget(), ImageLabel):
+            image_label = self.scroll_area.widget()
+            image_label.highlight_polygons(polygon_indices)
+
     def highlight_rectangles(self, rectangles):
         """
         高亮指定的矩形框列表（仅高亮，不可编辑）
@@ -424,6 +453,41 @@ class PreviewPanel(QWidget):
         if isinstance(self.scroll_area.widget(), ImageLabel):
             image_label = self.scroll_area.widget()
             image_label.highlight_rectangles(rectangles)
+
+    def highlight_polygons(self, polygons):
+        """
+        高亮指定的多边形列表（仅高亮，不可编辑）
+
+        Args:
+            polygons: 要高亮的多边形列表
+        """
+        if isinstance(self.scroll_area.widget(), ImageLabel):
+            image_label = self.scroll_area.widget()
+            # 如果传入的是索引列表
+            if polygons and isinstance(polygons[0], int):
+                image_label.highlight_polygons(polygons)
+            else:
+                # 提取多边形索引
+                polygon_indices = []
+                for polygon_data in polygons:
+                    # 在image_label.polygons中查找匹配的多边形
+                    for i, polygon in enumerate(image_label.polygons):
+                        if (polygon.points == polygon_data['points'] and 
+                            polygon.label == polygon_data['label']):
+                            polygon_indices.append(i)
+                            break
+                image_label.highlight_polygons(polygon_indices)
+
+    def highlight_polygon_indices(self, polygon_indices):
+        """
+        高亮指定索引的多边形列表（仅高亮，不可编辑）
+
+        Args:
+            polygon_indices: 要高亮的多边形索引列表
+        """
+        if isinstance(self.scroll_area.widget(), ImageLabel):
+            image_label = self.scroll_area.widget()
+            image_label.highlight_polygons(polygon_indices)
 
     def highlight_annotations_by_labels(self, labels):
         """
@@ -452,6 +516,24 @@ class PreviewPanel(QWidget):
             image_label.highlighted_polygons = []
             image_label.update()
 
+    def update_image_display(self):
+        """
+        更新图片显示（根据缩放因子调整图片大小）
+        """
+        if self.current_pixmap and not self.current_pixmap.isNull():
+            # 根据缩放因子调整图片大小
+            scaled_pixmap = self.current_pixmap.scaled(
+                int(self.current_pixmap.width() * self.scale_factor),
+                int(self.current_pixmap.height() * self.scale_factor),
+                Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.content_label.setPixmap(scaled_pixmap)
+            logger.debug(f"更新图片显示，缩放因子: {self.scale_factor}")
+        elif isinstance(self.scroll_area.widget(), ImageLabel):
+            # 如果是ImageLabel，更新其缩放因子并重绘
+            image_label = self.scroll_area.widget()
+            image_label.scale_factor = self.scale_factor
+            image_label.update()
+
     def delete_annotation(self, annotation):
         """
         删除指定的标注
@@ -466,14 +548,30 @@ class PreviewPanel(QWidget):
                 # 查找匹配的矩形框
                 for rect_info in image_label.rectangle_infos:
                     if rect_info.rectangle == annotation['rectangle'] and rect_info.label == annotation['label']:
+                        # 如果删除的是当前选中的矩形框，清除选中状态
+                        if image_label.selected_rectangle_info == rect_info:
+                            image_label.selected_rectangle_info = None
                         image_label.rectangle_infos.remove(rect_info)
+                        break
+                # 如果删除的矩形框在高亮列表中，也需要从高亮列表中移除
+                for rect in image_label.highlighted_rectangles:
+                    if rect == annotation['rectangle']:
+                        image_label.highlighted_rectangles.remove(rect)
                         break
             elif annotation['type'] == 'polygon':
                 # 查找匹配的多边形
                 for i, polygon in enumerate(image_label.polygons):
                     if polygon.points == annotation['points'] and polygon.label == annotation['label']:
+                        # 如果删除的是当前选中的多边形，清除选中状态
+                        if image_label.selected_polygon_index == i:
+                            image_label.selected_polygon_index = None
                         del image_label.polygons[i]
                         break
+                # 如果删除的多边形在高亮列表中，也需要从高亮列表中移除
+                if i in image_label.highlighted_polygons:
+                    image_label.highlighted_polygons.remove(i)
+                    # 更新后续索引
+                    image_label.highlighted_polygons = [idx-1 if idx > i else idx for idx in image_label.highlighted_polygons]
 
             # 更新显示
             image_label.update()
