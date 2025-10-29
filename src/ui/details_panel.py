@@ -85,11 +85,11 @@ class DetailsPanel(QWidget):
         """
         清除布局中的所有组件
         """
-        # 移除布局中的所有widget
+        # 移除布局中的所有widget，但不删除它们
         while self.layout().count():
             child = self.layout().takeAt(0)
             if child.widget():
-                # 不要删除widget，只需从布局中移除
+                # 只是将widget从布局中移除，不删除widget本身
                 child.widget().setParent(None)
 
     def show_image_details(self, file_path, image_label=None):
@@ -113,15 +113,18 @@ class DetailsPanel(QWidget):
             self.image_details.polygons_highlighted.connect(self.polygons_highlighted)
             self.image_details.polygon_indices_highlighted.connect(self.polygon_indices_highlighted)
             self.image_details.annotation_selected.connect(self.annotation_selected)
+        # 如果image_details已经存在但不在当前布局中，则添加到布局
+        elif self.image_details.parent() != self:
+            # 先从任何现有父级中移除
+            if self.image_details.parent():
+                self.image_details.setParent(None)
+            self.layout().addWidget(self.image_details)
         
         # 更新详情信息
         self.image_details.update_details(file_path, image_label)
         
         # 设置为当前视图
         self.current_view = self.image_details
-        
-        # 添加到布局
-        self.layout().addWidget(self.image_details)
 
     def show_video_details(self, file_path, video_player=None):
         """

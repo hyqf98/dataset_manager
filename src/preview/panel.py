@@ -333,7 +333,7 @@ class PreviewPanel(QWidget):
         Args:
             image_label (ImageLabel): 发出信号的ImageLabel对象
         """
-        # 发出标注更新信号
+        # 发出标注更新信号，传递当前文件路径和更新后的ImageLabel对象
         if self.current_file_path:
             self.annotations_updated.emit(self.current_file_path, image_label)
 
@@ -512,6 +512,21 @@ class PreviewPanel(QWidget):
         """
         if isinstance(self.scroll_area.widget(), ImageLabel):
             image_label = self.scroll_area.widget()
+            image_label.highlighted_rectangles = []
+            image_label.highlighted_polygons = []
+            image_label.update()
+
+    def clear_highlights_from_details(self, data_to_clear):
+        """
+        从详情面板接收清除高亮的请求，并处理需要清除高亮的标注框
+        
+        Args:
+            data_to_clear: 需要清除高亮的数据
+        """
+        if isinstance(self.scroll_area.widget(), ImageLabel):
+            image_label = self.scroll_area.widget()
+            
+            # 清除所有高亮状态
             image_label.highlighted_rectangles = []
             image_label.highlighted_polygons = []
             image_label.update()

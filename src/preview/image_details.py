@@ -2,6 +2,8 @@ from PyQt5 import sip
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QListWidget, QSplitter, QMenu, QAction, QApplication
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QCursor, QKeyEvent
+
+from .picture_annotation import ImageLabel
 from ..logging_config import logger
 
 
@@ -20,6 +22,8 @@ class ImageDetailsPanel(QWidget):
     polygons_highlighted = pyqtSignal(list)  # 发送需要高亮的多边形列表
     polygon_indices_highlighted = pyqtSignal(list)  # 发送需要高亮的多边形索引列表
     annotation_selected = pyqtSignal(dict)  # 统一发送选中的标注信息
+    # 新增信号，用于通知清除选中状态
+    selection_cleared = pyqtSignal()  # 发送清除选中状态信号
 
     def __init__(self):
         """
@@ -130,19 +134,13 @@ class ImageDetailsPanel(QWidget):
         self.image_label = image_label
 
         # 检查列表组件是否仍然有效
-        if not self.annotations_list or sip.isdeleted(self.annotations_list):
+        if sip.isdeleted(self.annotations_list):
             logger.warning("标注详情列表已被删除")
             return
 
-        if not self.tags_list or sip.isdeleted(self.tags_list):
+        if sip.isdeleted(self.tags_list):
             logger.warning("标签列表已被删除")
             return
-
-        # 保存当前选中的项信息
-        current_selected_row = self.annotations_list.currentRow()
-        current_selected_info = None
-        if 0 <= current_selected_row < len(self.annotations_data):
-            current_selected_info = self.annotations_data[current_selected_row]
 
         # 清空现有内容
         self.tags_list.clear()
@@ -163,7 +161,6 @@ class ImageDetailsPanel(QWidget):
                 self.tags_list.addItem(tag)
 
             # 显示标注详情
-            selected_row = -1
             for i, annotation in enumerate(self.annotations_data):
                 if annotation['type'] == 'rectangle':
                     label = annotation.get('label', '未标记')
@@ -176,21 +173,6 @@ class ImageDetailsPanel(QWidget):
                     points_str = ', '.join([f"({p.x()}, {p.y()})" for p in points])
                     item_text = f"[多边形] {label}: {points_str}"
                     self.annotations_list.addItem(item_text)
-
-                # 检查是否需要恢复选中状态
-                if (current_selected_info and
-                    annotation['type'] == current_selected_info['type'] and
-                    annotation.get('label') == current_selected_info.get('label')):
-                    if (annotation['type'] == 'rectangle' and
-                        annotation['rectangle'] == current_selected_info['rectangle']):
-                        selected_row = i
-                    elif (annotation['type'] == 'polygon' and
-                          annotation['points'] == current_selected_info['points']):
-                        selected_row = i
-
-            # 如果找到了之前选中的项，恢复选中状态
-            if selected_row >= 0:
-                self.annotations_list.setCurrentRow(selected_row)
 
     def select_annotation_in_image(self, annotation):
         """
@@ -246,22 +228,27 @@ class ImageDetailsPanel(QWidget):
                 # 找到匹配项后立即返回，避免继续循环
                 return
 
-    def on_tag_list_clicked(self, index):
+    def clear_highlights_and_selection(self):
         """
-        处理标签列表点击事件（包括点击空白区域）
+        统一清除高亮和选中状态的方法
+        发送清除高亮信号和清除选中状态信号
+        """
+        # 发送清除高亮信号
+        self.highlights_cleared.emit()
+        # 发送清除选中状态信号
+        self.selection_cleared.emit()
+
+    def clear_highlights_method(self, data_to_clear):
+        """
+        提取的清除高亮方法，接收需要清除高亮标注框的数据，
+        然后遍历对需要清除高亮的标注框进行清除
 
         Args:
-            index: 被点击的索引
+            data_to_clear: 需要清除高亮的数据，可以是标签列表或标注信息
         """
-        # 检查列表组件是否仍然有效
-        if not self.tags_list or sip.isdeleted(self.tags_list):
-            return
-
-        # 如果点击的是空白区域（没有项目被点击）
-        if not self.tags_list.itemFromIndex(index):
-            # 清除所有选择
-            self.tags_list.clearSelection()
-            # 发送清除高亮信号
+        # 直接调用ImageLabel中的统一清除高亮方法，传递参数
+        if isinstance(self.image_label, ImageLabel):
+            self.image_label.clear_highlights_method(data_to_clear)
 
     def on_annotation_list_clicked(self, index):
         """
@@ -278,7 +265,28 @@ class ImageDetailsPanel(QWidget):
         if not self.annotations_list.itemFromIndex(index):
             # 清除所有选择
             self.annotations_list.clearSelection()
-            # 发送清除高亮信号
+            # 使用新方法清除高亮
+            self.clear_highlights_method(None)
+            # 同时通知图片标注窗口取消选中状态
+            self.annotation_selected.emit(None)
+
+    def on_tag_list_clicked(self, index):
+        """
+        处理标签列表点击事件（包括点击空白区域）
+
+        Args:
+            index: 被点击的索引
+        """
+        # 检查列表组件是否仍然有效
+        if not self.tags_list or sip.isdeleted(self.tags_list):
+            return
+
+        # 如果点击的是空白区域（没有项目被点击）
+        if not self.tags_list.itemFromIndex(index):
+            # 清除所有选择
+            self.tags_list.clearSelection()
+            # 使用新方法清除高亮
+            self.clear_highlights_method(None)
 
     def on_tag_item_clicked(self, item):
         """
@@ -311,7 +319,10 @@ class ImageDetailsPanel(QWidget):
             start_row = min(self.last_tag_selected_row, row)
             end_row = max(self.last_tag_selected_row, row)
             for i in range(start_row, end_row + 1):
-                self.tags_list.item(i).setSelected(True)
+                # 检查项目是否存在再设置选中状态
+                tag_item = self.tags_list.item(i)
+                if tag_item:
+                    tag_item.setSelected(True)
         else:
             # 正常单选
             self.tags_list.clearSelection()
@@ -326,7 +337,9 @@ class ImageDetailsPanel(QWidget):
             self.tag_selected.emit(selected_labels)
         else:
             # 如果没有选中的标签，清除高亮
-            self.highlights_cleared.emit()
+            self.clear_highlights_method(selected_labels)
+            # 同时通知图片标注窗口取消选中状态
+            self.annotation_selected.emit(None)
 
     def on_annotation_item_clicked(self, item):
         """
@@ -356,10 +369,13 @@ class ImageDetailsPanel(QWidget):
             # 清除之前的选择
             self.annotations_list.clearSelection()
             # 选择从上次选中到当前选中的范围
-            start_row = min(self.last_annotation_selected_row, row)
-            end_row = max(self.last_annotation_selected_row, row)
+            start_row = min(self.last_tag_selected_row, row)
+            end_row = max(self.last_tag_selected_row, row)
             for i in range(start_row, end_row + 1):
-                self.annotations_list.item(i).setSelected(True)
+                # 检查项目是否存在再设置选中状态
+                annotation_item = self.annotations_list.item(i)
+                if annotation_item:
+                    annotation_item.setSelected(True)
         else:
             # 正常单选
             self.annotations_list.clearSelection()
@@ -401,7 +417,9 @@ class ImageDetailsPanel(QWidget):
                     self.polygon_indices_highlighted.emit(polygon_indices)
         else:
             # 如果没有选中的标注，清除高亮
-            self.highlights_cleared.emit()
+            self.clear_highlights_method(selected_items)
+            # 同时通知图片标注窗口取消选中状态
+            self.annotation_selected.emit(None)
 
     def on_tags_item_selection_changed(self):
         """
@@ -423,7 +441,7 @@ class ImageDetailsPanel(QWidget):
             self.last_tag_selected_row = first_selected_row
         else:
             # 没有选中项，清除高亮
-            self.highlights_cleared.emit()
+            self.clear_highlights_method([])
             self.last_tag_selected_row = -1
 
     def on_annotations_item_selection_changed(self):
@@ -468,7 +486,8 @@ class ImageDetailsPanel(QWidget):
                     self.polygon_indices_highlighted.emit(polygon_indices)
         else:
             # 如果没有选中的标注，清除高亮
-            self.highlights_cleared.emit()
+            self.clear_highlights_method([])
+            # 同时通知图片标注窗口取消选中状态
 
     def show_tags_context_menu(self, position):
         """
@@ -553,6 +572,9 @@ class ImageDetailsPanel(QWidget):
         # 重置上次选中的行号
         self.last_tag_selected_row = -1
 
+        # 更新标注详情列表
+        self.update_details(self.current_file_path, self.image_label)
+
     def delete_selected_annotations(self):
         """
         删除选中的标注
@@ -601,10 +623,6 @@ class ImageDetailsPanel(QWidget):
 
         # 清除选中状态
         self.annotations_list.clearSelection()
-
-        # 更新预览面板
-        if self.current_file_path and self.image_label:
-            self.update_details(self.current_file_path, self.image_label)
 
     def delete_tag(self, item):
         """

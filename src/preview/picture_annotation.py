@@ -478,6 +478,25 @@ class ImageLabel(QLabel):
 
         return polygon.containsPoint(point, Qt.OddEvenFill)
 
+    def clear_selection(self):
+        """
+        统一清除所有选中状态的方法
+        
+        清除所有选中的标注元素（矩形框、多边形或点）的选中状态，
+        同时清除高亮状态
+        """
+        # 清除所有选中状态
+        self.selected_rectangle_info = None
+        self.selected_polygon_index = None
+        self.selected_point_info = None
+        
+        # 清除高亮状态
+        self.highlighted_rectangles = []
+        self.highlighted_polygons = []
+        
+        # 更新界面
+        self.update()
+
     def select_rectangle(self, rectangle):
         """
         选中指定的矩形框（可编辑状态）
@@ -528,6 +547,11 @@ class ImageLabel(QLabel):
         Args:
             annotation_data: 标注数据字典，包含type和其他相关信息
         """
+        # 处理取消选中的情况
+        if annotation_data is None:
+            self.clear_selection()
+            return
+        
         if annotation_data['type'] == 'rectangle':
             self.select_rectangle(annotation_data['rectangle'])
         elif annotation_data['type'] == 'polygon':
@@ -610,6 +634,49 @@ class ImageLabel(QLabel):
         self.selected_rectangle_info = None
         self.selected_polygon_index = None
         self.selected_point_info = None
+        self.update()
+
+    def clear_highlights_method(self, data_to_clear):
+        """
+        统一清除高亮方法，接收参数对象，从中获取标签、形状和点位来判断处理
+        
+        Args:
+            data_to_clear: 需要清除高亮的数据对象
+        """
+        # 如果传入的是空列表或None，清除所有高亮状态
+        if not data_to_clear:
+            self.highlighted_rectangles = []
+            self.highlighted_polygons = []
+            self.update()
+            return
+            
+        # 如果传入的是标签列表，则清除这些标签相关的高亮
+        if isinstance(data_to_clear, list) and all(isinstance(item, str) for item in data_to_clear):
+            # 根据标签清除高亮
+            self.highlight_annotations_by_labels([])
+            return
+            
+        # 如果传入的是标注对象列表
+        if isinstance(data_to_clear, list) and all(isinstance(item, dict) for item in data_to_clear):
+            # 遍历并清除特定标注的高亮
+            for annotation in data_to_clear:
+                if annotation.get('type') == 'rectangle' and annotation['rectangle'] in self.highlighted_rectangles:
+                    self.highlighted_rectangles.remove(annotation['rectangle'])
+                elif annotation.get('type') == 'polygon':
+                    # 对于多边形，可能需要更复杂的匹配逻辑
+                    # 这里简单地检查points和label是否匹配
+                    for i, polygon in enumerate(self.polygons):
+                        if (polygon.points == annotation['points'] and 
+                            polygon.label == annotation['label'] and
+                            i in self.highlighted_polygons):
+                            self.highlighted_polygons.remove(i)
+                            break
+            self.update()
+            return
+            
+        # 如果是其他情况，默认清除所有高亮
+        self.highlighted_rectangles = []
+        self.highlighted_polygons = []
         self.update()
 
     def mousePressEvent(self, event):
@@ -841,13 +908,7 @@ class ImageLabel(QLabel):
             if (self.selected_rectangle_info is not None or
                 self.selected_polygon_index is not None or
                 self.selected_point_info is not None):
-                self.selected_rectangle_info = None
-                self.selected_polygon_index = None
-                self.selected_point_info = None
-                # 清除高亮状态
-                self.highlighted_rectangles = []
-                self.highlighted_polygons = []
-                self.update()
+                self.clear_selection()
 
                 # 根据规范，点击空白区域取消选中时不发送事件信号
                 pass
@@ -1037,6 +1098,9 @@ class ImageLabel(QLabel):
             if rect_info == self.selected_rectangle_info:
                 # 选中的矩形框用绿色粗线绘制
                 painter.setPen(QPen(Qt.green, 3, Qt.SolidLine))
+            elif rect_info.rectangle in self.highlighted_rectangles:
+                # 高亮的矩形框用黄色粗线绘制
+                painter.setPen(QPen(Qt.yellow, 3, Qt.SolidLine))
             else:
                 # 普通矩形框用红色细线绘制
                 painter.setPen(QPen(Qt.red, 2, Qt.SolidLine))
@@ -1071,20 +1135,6 @@ class ImageLabel(QLabel):
 
                 # 重置画笔填充状态，避免影响其他绘制
                 painter.setBrush(Qt.NoBrush)
-
-        # 绘制高亮矩形框
-        for rectangle in self.highlighted_rectangles:
-            # 创建缩放后的矩形
-            scaled_rect = QRect(
-                int(rectangle.x() * self.scale_factor),
-                int(rectangle.y() * self.scale_factor),
-                int(rectangle.width() * self.scale_factor),
-                int(rectangle.height() * self.scale_factor)
-            )
-            # 高亮矩形框用黄色粗线绘制
-            painter.setPen(QPen(Qt.yellow, 3, Qt.SolidLine))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawRect(scaled_rect)
 
         # 绘制当前正在绘制的矩形框
         if self.current_rectangle:
@@ -1136,6 +1186,9 @@ class ImageLabel(QLabel):
                 # 根据多边形是否被选中设置不同的颜色
                 if poly_index == self.selected_polygon_index:
                     painter.setPen(QPen(Qt.green, 3, Qt.SolidLine))  # 选中时用绿色粗线，与矩形保持一致
+                elif poly_index in self.highlighted_polygons:
+                    # 高亮多边形用黄色粗线绘制
+                    painter.setPen(QPen(Qt.yellow, 3, Qt.SolidLine))
                 else:
                     painter.setPen(QPen(Qt.red, 2, Qt.SolidLine))  # 红色实线
 
@@ -1183,6 +1236,11 @@ class ImageLabel(QLabel):
                     painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
                     painter.setBrush(Qt.green)
                     painter.drawEllipse(scaled_point, 5, 5)  # 绘制半径为5的圆形点
+                elif poly_index in self.highlighted_polygons:
+                    # 高亮多边形的点用黄色绘制
+                    painter.setPen(QPen(Qt.yellow, 1, Qt.SolidLine))
+                    painter.setBrush(Qt.yellow)
+                    painter.drawEllipse(scaled_point, 5, 5)  # 绘制半径为5的圆形点
                 elif point_index == 0:
                     # 起始点用较大红色圆形点绘制
                     painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
@@ -1216,6 +1274,9 @@ class ImageLabel(QLabel):
                 # 设置文本颜色
                 if poly_index == self.selected_polygon_index:
                     painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
+                elif poly_index in self.highlighted_polygons:
+                    # 高亮多边形标签用黄色
+                    painter.setPen(QPen(Qt.yellow, 1, Qt.SolidLine))
                 else:
                     painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
                 # 绘制标签文本
