@@ -1,6 +1,6 @@
 import os
 import cv2
-from PyQt5.QtCore import QRect
+from PyQt5.QtCore import QRect, QPoint
 
 
 def save_yolo_annotations(file_path, image_label, class_names):
@@ -57,6 +57,14 @@ def save_yolo_annotations(file_path, image_label, class_names):
                 
                 # 写入YOLO格式: class_id x_center y_center width height
                 f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
+            elif annotation['type'] == 'polygon' and annotation.get('label'):
+                # 获取类别ID
+                class_id = _get_class_id(annotation['label'], class_names)
+                
+                # 写入多边形格式: class_id 0 points_count x1 y1 x2 y2 ...
+                points = annotation['points']
+                points_str = ' '.join([f"{p.x() / img_width:.6f} {p.y() / img_height:.6f}" for p in points])
+                f.write(f"{class_id} 0 {len(points)} {points_str}\n")
 
 
 def load_yolo_annotations(file_path, class_names):
@@ -97,17 +105,10 @@ def load_yolo_annotations(file_path, class_names):
     # 解析每一行
     for line in lines:
         parts = line.strip().split()
-        if len(parts) != 5:
+        if len(parts) < 5:
             continue
             
-        class_id, x_center, y_center, width, height = map(float, parts)
-        class_id = int(class_id)
-        
-        # 转换为像素坐标
-        x = int((x_center - width / 2) * img_width)
-        y = int((y_center - height / 2) * img_height)
-        w = int(width * img_width)
-        h = int(height * img_height)
+        class_id = int(float(parts[0]))
         
         # 获取类别名称
         if 0 <= class_id < len(class_names):
@@ -115,13 +116,41 @@ def load_yolo_annotations(file_path, class_names):
         else:
             label = f"unknown_{class_id}"
         
-        # 创建矩形标注信息
-        rect = QRect(x, y, w, h)
-        annotations.append({
-            'type': 'rectangle',
-            'rectangle': rect,
-            'label': label
-        })
+        # 判断是矩形还是多边形
+        if len(parts) == 5 and parts[1] != '0':  # 矩形格式
+            x_center, y_center, width, height = map(float, parts[1:])
+            
+            # 转换为像素坐标
+            x = int((x_center - width / 2) * img_width)
+            y = int((y_center - height / 2) * img_height)
+            w = int(width * img_width)
+            h = int(height * img_height)
+            
+            # 创建矩形标注信息
+            rect = QRect(x, y, w, h)
+            annotations.append({
+                'type': 'rectangle',
+                'rectangle': rect,
+                'label': label
+            })
+        elif len(parts) >= 5 and parts[1] == '0':  # 多边形格式
+            points_count = int(float(parts[2]))
+            points_data = parts[3:]
+            
+            # 确保点数据完整
+            if len(points_data) == points_count * 2:
+                points = []
+                for i in range(0, len(points_data), 2):
+                    x = int(float(points_data[i]) * img_width)
+                    y = int(float(points_data[i+1]) * img_height)
+                    points.append(QPoint(x, y))
+                
+                # 创建多边形标注信息
+                annotations.append({
+                    'type': 'polygon',
+                    'points': points,
+                    'label': label
+                })
     
     return annotations
 

@@ -12,15 +12,11 @@ class DetailsPanel(QWidget):
     """
 
     # 定义信号，用于通知图片标签选中状态变化（转发自ImageDetailsPanel）
-    rectangle_selected = pyqtSignal(object)  # 发送选中的矩形框信息
-    rectangles_highlighted = pyqtSignal(list)  # 发送需要高亮的矩形框列表
     tag_selected = pyqtSignal(list)  # 发送选中的标签列表
     highlights_cleared = pyqtSignal()  # 发送清除高亮信号
     annotation_deleted = pyqtSignal(dict)  # 发送需要删除的标注信息
-    polygon_selected = pyqtSignal(int)  # 发送选中的多边形索引
-    polygons_highlighted = pyqtSignal(list)  # 发送需要高亮的多边形列表
-    polygon_indices_highlighted = pyqtSignal(list)  # 发送需要高亮的多边形索引列表
     annotation_selected = pyqtSignal(dict)  # 统一发送选中的标注信息
+    annotation_deselected = pyqtSignal()  # 新增信号，用于通知取消选中标注
 
     def __init__(self):
         """
@@ -104,15 +100,11 @@ class DetailsPanel(QWidget):
         if not self.image_details:
             self.image_details = ImageDetailsPanel()
             # 连接信号
-            self.image_details.rectangle_selected.connect(self.rectangle_selected)
-            self.image_details.rectangles_highlighted.connect(self.rectangles_highlighted)
             self.image_details.tag_selected.connect(self.tag_selected)
             self.image_details.highlights_cleared.connect(self.highlights_cleared)
             self.image_details.annotation_deleted.connect(self.annotation_deleted)
-            self.image_details.polygon_selected.connect(self.polygon_selected)
-            self.image_details.polygons_highlighted.connect(self.polygons_highlighted)
-            self.image_details.polygon_indices_highlighted.connect(self.polygon_indices_highlighted)
             self.image_details.annotation_selected.connect(self.annotation_selected)
+            self.image_details.annotation_deselected.connect(self.annotation_deselected)
         # 如果image_details已经存在但不在当前布局中，则添加到布局
         elif self.image_details.parent() != self:
             # 先从任何现有父级中移除

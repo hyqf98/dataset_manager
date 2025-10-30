@@ -214,7 +214,7 @@ class PreviewPanel(QWidget):
                         self.scale_factor *= 1.1  # 放大 (每次放大10%)
                     else:
                         self.scale_factor *= 0.9  # 缩小 (每次缩小10%)
-                    
+
                     logger.debug(f"缩放因子更新为: {self.scale_factor}")
                     self.update_image_display()
                 else:
@@ -340,11 +340,10 @@ class PreviewPanel(QWidget):
     def on_image_label_annotation_selected(self, annotation):
         """
         处理ImageLabel上选中任意标注元素的事件
-        
+
         Args:
             annotation: 被选中的标注对象(矩形或多边形)
         """
-        logger.debug(f"图片上选中标注: annotation={annotation}")
         # 发出图片上选中标注的信号
         self.annotation_selected_in_image.emit(annotation)
 
@@ -399,6 +398,17 @@ class PreviewPanel(QWidget):
         logger.info(f"显示带标注功能的图片: {file_path}")
         return True
 
+    def select_annotation(self, annotation_data):
+        """
+        选中指定的注解（可编辑状态）
+
+        Args:
+            annotation_data: 要选中的注解数据
+        """
+        if isinstance(self.scroll_area.widget(), ImageLabel):
+            image_label = self.scroll_area.widget()
+            image_label.select_annotation_by_data(annotation_data)
+
     def select_rectangle(self, rectangle):
         """
         选中指定的矩形框（可编辑状态）
@@ -406,9 +416,7 @@ class PreviewPanel(QWidget):
         Args:
             rectangle: 要选中的矩形框
         """
-        if isinstance(self.scroll_area.widget(), ImageLabel):
-            image_label = self.scroll_area.widget()
-            image_label.select_rectangle(rectangle)
+        pass
 
     def select_polygon(self, polygon_index):
         """
@@ -417,31 +425,7 @@ class PreviewPanel(QWidget):
         Args:
             polygon_index: 要选中的多边形索引
         """
-        if isinstance(self.scroll_area.widget(), ImageLabel):
-            image_label = self.scroll_area.widget()
-            image_label.select_polygon(polygon_index)
-
-    def select_annotation(self, annotation_data):
-        """
-        统一选中标注对象（可编辑状态）
-        
-        Args:
-            annotation_data: 标注数据字典，包含type和其他相关信息
-        """
-        if isinstance(self.scroll_area.widget(), ImageLabel):
-            image_label = self.scroll_area.widget()
-            image_label.select_annotation(annotation_data)
-
-    def highlight_polygon_indices(self, polygon_indices):
-        """
-        高亮指定索引的多边形列表（仅高亮，不可编辑）
-
-        Args:
-            polygon_indices: 要高亮的多边形索引列表
-        """
-        if isinstance(self.scroll_area.widget(), ImageLabel):
-            image_label = self.scroll_area.widget()
-            image_label.highlight_polygons(polygon_indices)
+        pass
 
     def highlight_rectangles(self, rectangles):
         """
@@ -450,9 +434,7 @@ class PreviewPanel(QWidget):
         Args:
             rectangles: 要高亮的矩形框列表
         """
-        if isinstance(self.scroll_area.widget(), ImageLabel):
-            image_label = self.scroll_area.widget()
-            image_label.highlight_rectangles(rectangles)
+        pass
 
     def highlight_polygons(self, polygons):
         """
@@ -461,22 +443,7 @@ class PreviewPanel(QWidget):
         Args:
             polygons: 要高亮的多边形列表
         """
-        if isinstance(self.scroll_area.widget(), ImageLabel):
-            image_label = self.scroll_area.widget()
-            # 如果传入的是索引列表
-            if polygons and isinstance(polygons[0], int):
-                image_label.highlight_polygons(polygons)
-            else:
-                # 提取多边形索引
-                polygon_indices = []
-                for polygon_data in polygons:
-                    # 在image_label.polygons中查找匹配的多边形
-                    for i, polygon in enumerate(image_label.polygons):
-                        if (polygon.points == polygon_data['points'] and 
-                            polygon.label == polygon_data['label']):
-                            polygon_indices.append(i)
-                            break
-                image_label.highlight_polygons(polygon_indices)
+        pass
 
     def highlight_polygon_indices(self, polygon_indices):
         """
@@ -485,9 +452,7 @@ class PreviewPanel(QWidget):
         Args:
             polygon_indices: 要高亮的多边形索引列表
         """
-        if isinstance(self.scroll_area.widget(), ImageLabel):
-            image_label = self.scroll_area.widget()
-            image_label.highlight_polygons(polygon_indices)
+        pass
 
     def highlight_annotations_by_labels(self, labels):
         """
@@ -519,13 +484,13 @@ class PreviewPanel(QWidget):
     def clear_highlights_from_details(self, data_to_clear):
         """
         从详情面板接收清除高亮的请求，并处理需要清除高亮的标注框
-        
+
         Args:
             data_to_clear: 需要清除高亮的数据
         """
         if isinstance(self.scroll_area.widget(), ImageLabel):
             image_label = self.scroll_area.widget()
-            
+
             # 清除所有高亮状态
             image_label.highlighted_rectangles = []
             image_label.highlighted_polygons = []
@@ -594,3 +559,11 @@ class PreviewPanel(QWidget):
             image_label.save_yolo_annotations()
             # 发出标注更新信号
             self.annotations_updated.emit(self.current_file_path, image_label)
+
+    def clear_annotation_selection(self):
+        """
+        清除图片上的标注选中状态
+        """
+        if isinstance(self.scroll_area.widget(), ImageLabel):
+            image_label = self.scroll_area.widget()
+            image_label.clear_selection()

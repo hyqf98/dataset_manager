@@ -13,15 +13,11 @@ class ImageDetailsPanel(QWidget):
     """
 
     # 定义信号，用于通知图片标签选中状态变化
-    rectangle_selected = pyqtSignal(object)  # 发送选中的矩形框信息
-    rectangles_highlighted = pyqtSignal(list)  # 发送需要高亮的矩形框列表
     tag_selected = pyqtSignal(list)  # 发送选中的标签列表
     highlights_cleared = pyqtSignal()  # 发送清除高亮信号
     annotation_deleted = pyqtSignal(dict)  # 发送需要删除的标注信息
-    polygon_selected = pyqtSignal(int)  # 发送选中的多边形索引
-    polygons_highlighted = pyqtSignal(list)  # 发送需要高亮的多边形列表
-    polygon_indices_highlighted = pyqtSignal(list)  # 发送需要高亮的多边形索引列表
     annotation_selected = pyqtSignal(dict)  # 统一发送选中的标注信息
+    annotation_deselected = pyqtSignal()  # 新增信号，用于通知取消选中标注
     # 新增信号，用于通知清除选中状态
     selection_cleared = pyqtSignal()  # 发送清除选中状态信号
 
@@ -33,7 +29,6 @@ class ImageDetailsPanel(QWidget):
         self.current_file_path = None
         self.image_label = None  # 对应的图片标注组件
         self.annotations_data = []  # 存储当前的标注数据
-        self.selected_annotation = None  # 当前选中的标注信息（统一存储，不再区分类型）
         self.last_tag_selected_row = -1  # 上次选中的标签行号，用于Shift键批量选择
         self.last_annotation_selected_row = -1  # 上次选中的标注详情行号，用于Shift键批量选择
         self.init_ui()
@@ -181,24 +176,11 @@ class ImageDetailsPanel(QWidget):
         Args:
             annotation: 被选中的标注对象(矩形或多边形)
         """
-        logger.debug(f"详情面板处理图片选中事件: annotation={annotation}")
-
         # 处理取消选中的情况
         if annotation is None:
-            # 清除所有选中状态
-            self.selected_annotation = None
             if self.annotations_list and not sip.isdeleted(self.annotations_list):
                 self.annotations_list.clearSelection()
             logger.debug("详情面板清除所有选中状态")
-            return
-
-        # 只有当当前选中的不是这个标注时才更新
-        if self.selected_annotation != annotation:
-            # 保存选中的标注信息（统一保存，不再区分矩形或多边形）
-            self.selected_annotation = annotation
-            logger.debug(f"详情面板选中标注: {annotation}")
-        else:
-            # 如果已经是选中的标注，则不需要更新
             return
 
         # 遍历标注数据，通过标签名称和点位信息来匹配并选中对应的列表项
@@ -218,13 +200,13 @@ class ImageDetailsPanel(QWidget):
             if label_match and shape_match:
                 # 检查列表组件是否仍然有效
                 if self.annotations_list and not sip.isdeleted(self.annotations_list):
-                    # 使用 setCurrentRow 设置选中行，确保选中状态一致
-                    self.annotations_list.setCurrentRow(i)
-                    # 确保选中的项可见
+                    # 清除当前选择并选中匹配项
+                    self.annotations_list.clearSelection()
                     item = self.annotations_list.item(i)
                     if item:
+                        item.setSelected(True)
                         self.annotations_list.scrollToItem(item)
-                    logger.debug(f"详情面板选中列表项[{i}]: {item.text() if item else 'None'}")
+                    logger.debug("详情面板选中列表项[%d]: %s", i, item.text() if item else "None")
                 # 找到匹配项后立即返回，避免继续循环
                 return
 
@@ -246,9 +228,9 @@ class ImageDetailsPanel(QWidget):
         Args:
             data_to_clear: 需要清除高亮的数据，可以是标签列表或标注信息
         """
-        # 直接调用ImageLabel中的统一清除高亮方法，传递参数
+        # 直接调用ImageLabel中的统一清除高亮方法
         if isinstance(self.image_label, ImageLabel):
-            self.image_label.clear_highlights_method(data_to_clear)
+            self.image_label.clear_highlights(data_to_clear)
 
     def on_annotation_list_clicked(self, index):
         """
@@ -265,10 +247,11 @@ class ImageDetailsPanel(QWidget):
         if not self.annotations_list.itemFromIndex(index):
             # 清除所有选择
             self.annotations_list.clearSelection()
-            # 使用新方法清除高亮
-            self.clear_highlights_method(None)
+            # 如果有ImageLabel实例，清除高亮
+            if self.image_label and hasattr(self.image_label, 'clear_highlights'):
+                self.image_label.clear_highlights()
             # 同时通知图片标注窗口取消选中状态
-            self.annotation_selected.emit(None)
+            self.annotation_deselected.emit()
 
     def on_tag_list_clicked(self, index):
         """
@@ -285,8 +268,9 @@ class ImageDetailsPanel(QWidget):
         if not self.tags_list.itemFromIndex(index):
             # 清除所有选择
             self.tags_list.clearSelection()
-            # 使用新方法清除高亮
-            self.clear_highlights_method(None)
+            # 如果有ImageLabel实例，清除高亮
+            if self.image_label and hasattr(self.image_label, 'clear_highlights'):
+                self.image_label.clear_highlights()
 
     def on_tag_item_clicked(self, item):
         """
@@ -334,12 +318,13 @@ class ImageDetailsPanel(QWidget):
 
         # 发射信号，通知图片标签高亮这些标签对应的所有标注（矩形和多边形）
         if selected_labels:
-            self.tag_selected.emit(selected_labels)
+            # 使用ImageLabel的新方法高亮标注
+            if self.image_label:
+                self.image_label.highlight_annotations_by_labels(selected_labels)
         else:
             # 如果没有选中的标签，清除高亮
-            self.clear_highlights_method(selected_labels)
-            # 同时通知图片标注窗口取消选中状态
-            self.annotation_selected.emit(None)
+            if self.image_label:
+                self.image_label.clear_highlights()
 
     def on_annotation_item_clicked(self, item):
         """
@@ -369,8 +354,8 @@ class ImageDetailsPanel(QWidget):
             # 清除之前的选择
             self.annotations_list.clearSelection()
             # 选择从上次选中到当前选中的范围
-            start_row = min(self.last_tag_selected_row, row)
-            end_row = max(self.last_tag_selected_row, row)
+            start_row = min(self.last_annotation_selected_row, row)
+            end_row = max(self.last_annotation_selected_row, row)
             for i in range(start_row, end_row + 1):
                 # 检查项目是否存在再设置选中状态
                 annotation_item = self.annotations_list.item(i)
@@ -382,7 +367,13 @@ class ImageDetailsPanel(QWidget):
             item.setSelected(True)
             self.last_annotation_selected_row = row
 
-        # 处理批量选择的情况 - 高亮所有选中的标注框
+        # 处理选择后的操作
+        self._handle_annotation_selection()
+
+    def _handle_annotation_selection(self):
+        """
+        处理标注选择后的操作
+        """
         selected_items = self.annotations_list.selectedItems()
         if len(selected_items) > 0:
             # 如果只选中了一个项目，则选中对应的标注框
@@ -394,32 +385,23 @@ class ImageDetailsPanel(QWidget):
                     self.annotation_selected.emit(annotation_data)
             # 如果选中了多个项目，则高亮显示所有选中的标注框
             else:
-                rectangles = []
-                polygons = []
-                for selected_item in selected_items:
-                    row = self.annotations_list.row(selected_item)
+                # 收集所有选中的标注数据
+                selected_annotations = []
+                for item in selected_items:
+                    row = self.annotations_list.row(item)
                     if 0 <= row < len(self.annotations_data):
-                        annotation_data = self.annotations_data[row]
-                        if annotation_data['type'] == 'rectangle':
-                            rectangles.append(annotation_data['rectangle'])
-                        elif annotation_data['type'] == 'polygon':
-                            polygons.append(annotation_data)
+                        selected_annotations.append(self.annotations_data[row])
 
-                # 发出矩形高亮信号
-                if rectangles:
-                    self.rectangles_highlighted.emit(rectangles)
-
-                # 发出多边形高亮信号
-                if polygons:
-                    polygon_indices = []
-                    for polygon in polygons:
-                        polygon_indices.append(self.annotations_data.index(polygon))
-                    self.polygon_indices_highlighted.emit(polygon_indices)
+                # 如果有ImageLabel实例，使用其高亮方法
+                if self.image_label and hasattr(self.image_label, 'highlight_annotations_by_labels'):
+                    labels = list(set(anno.get('label') for anno in selected_annotations if anno.get('label')))
+                    self.image_label.highlight_annotations_by_labels(labels)
         else:
             # 如果没有选中的标注，清除高亮
-            self.clear_highlights_method(selected_items)
+            if self.image_label and hasattr(self.image_label, 'clear_highlights'):
+                self.image_label.clear_highlights()
             # 同时通知图片标注窗口取消选中状态
-            self.annotation_selected.emit(None)
+            self.annotation_deselected.emit()
 
     def on_tags_item_selection_changed(self):
         """
@@ -452,6 +434,7 @@ class ImageDetailsPanel(QWidget):
         if not self.annotations_list or sip.isdeleted(self.annotations_list):
             return
 
+        # 直接处理选择，避免调用_handle_annotation_selection导致递归
         selected_items = self.annotations_list.selectedItems()
         if len(selected_items) > 0:
             # 如果只选中了一个项目，则选中对应的标注框
@@ -463,31 +446,17 @@ class ImageDetailsPanel(QWidget):
                     self.annotation_selected.emit(annotation_data)
             # 如果选中了多个项目，则高亮显示所有选中的标注框
             else:
-                rectangles = []
-                polygons = []
-                for selected_item in selected_items:
-                    row = self.annotations_list.row(selected_item)
+                # 收集所有选中的标注数据
+                selected_annotations = []
+                for item in selected_items:
+                    row = self.annotations_list.row(item)
                     if 0 <= row < len(self.annotations_data):
-                        annotation_data = self.annotations_data[row]
-                        if annotation_data['type'] == 'rectangle':
-                            rectangles.append(annotation_data['rectangle'])
-                        elif annotation_data['type'] == 'polygon':
-                            polygons.append(annotation_data)
+                        selected_annotations.append(self.annotations_data[row])
 
-                # 发出矩形高亮信号
-                if rectangles:
-                    self.rectangles_highlighted.emit(rectangles)
-
-                # 发出多边形高亮信号
-                if polygons:
-                    polygon_indices = []
-                    for polygon in polygons:
-                        polygon_indices.append(self.annotations_data.index(polygon))
-                    self.polygon_indices_highlighted.emit(polygon_indices)
-        else:
-            # 如果没有选中的标注，清除高亮
-            self.clear_highlights_method([])
-            # 同时通知图片标注窗口取消选中状态
+                # 如果有ImageLabel实例，使用其高亮方法
+                if self.image_label and hasattr(self.image_label, 'highlight_annotations_by_labels'):
+                    labels = list(set(anno.get('label') for anno in selected_annotations if anno.get('label')))
+                    self.image_label.highlight_annotations_by_labels(labels)
 
     def show_tags_context_menu(self, position):
         """

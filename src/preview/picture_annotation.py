@@ -5,123 +5,201 @@ from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal
 from .yolo_utils import save_yolo_annotations, load_yolo_annotations
 import os
 
+from ..logging_config import logger
 
-class ImageViewer(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Unified Annotation Tool")
-        self.setGeometry(100, 100, 800, 600)
 
-        # 创建菜单栏
-        open_action = QAction("Open Image", self)
-        open_action.triggered.connect(self.open_image)
+class Annotation:
+    """统一的注解基类"""
+    def __init__(self, label=""):
+        self.label = label
+        self.selected = False
+        self.highlighted = False
 
-        # 创建模式切换菜单项
-        self.rect_action = QAction("Rectangle Mode", self, checkable=True)
-        self.polygon_action = QAction("Polygon Mode", self, checkable=True)
-        self.rect_action.setChecked(True)  # 默认为矩形模式
-        self.rect_action.triggered.connect(self.switch_to_rectangle_mode)
-        self.polygon_action.triggered.connect(self.switch_to_polygon_mode)
+    def get_type(self):
+        """获取注解类型"""
+        raise NotImplementedError
 
-        menubar = self.menuBar()
-        file_menu = menubar.addMenu("File")
-        file_menu.addAction(open_action)
+    def contains_point(self, point):
+        """检查点是否在注解内部"""
+        raise NotImplementedError
 
-        mode_menu = menubar.addMenu("Mode")
-        mode_menu.addAction(self.rect_action)
-        mode_menu.addAction(self.polygon_action)
+    def move_by(self, offset):
+        """移动注解位置"""
+        raise NotImplementedError
 
-        # 创建工具栏用于切换模式
-        self.create_toolbar()
+    def draw(self, painter, scale_factor):
+        """绘制注解"""
+        raise NotImplementedError
 
-        # 创建图像显示区域
-        self.label = ImageLabel()
-        self.label.set_image('/Users/haijun/Documents/图片/无人机数据集/9.jpeg')
-        self.setCentralWidget(self.label)
-        # 确保主窗口能够将焦点传递给ImageLabel
-        self.label.setFocusPolicy(Qt.StrongFocus)
-        self.label.setFocus()
+    def get_center(self):
+        """获取注解中心点"""
+        raise NotImplementedError
 
-    def create_toolbar(self):
-        """创建工具栏"""
-        toolbar = self.addToolBar("Tools")
-        
-        # 矩形模式按钮
-        self.rect_tool_button = QPushButton("□")
-        self.rect_tool_button.setCheckable(True)
-        self.rect_tool_button.setChecked(True)
-        self.rect_tool_button.setToolTip("Rectangle Mode")
-        self.rect_tool_button.clicked.connect(self.switch_to_rectangle_mode)
-        
-        # 多边形模式按钮
-        self.polygon_tool_button = QPushButton("◇")
-        self.polygon_tool_button.setCheckable(True)
-        self.polygon_tool_button.setToolTip("Polygon Mode")
-        self.polygon_tool_button.clicked.connect(self.switch_to_polygon_mode)
-        
-        # 创建按钮组确保只有一个按钮被选中
-        self.mode_button_group = QButtonGroup(self)
-        self.mode_button_group.addButton(self.rect_tool_button)
-        self.mode_button_group.addButton(self.polygon_tool_button)
-        
-        toolbar.addWidget(self.rect_tool_button)
-        toolbar.addWidget(self.polygon_tool_button)
 
-    def open_image(self):
-        options = QFileDialog.Options()
-        file_name, _ = QFileDialog.getOpenFileName(
-            self, "Open Image", "", "Image Files (*.png *.jpg *.bmp *.jpeg);;All Files (*)", options=options
+class RectangleAnnotation(Annotation):
+    """矩形注解类"""
+    def __init__(self, rectangle, label=""):
+        super().__init__(label)
+        self.rectangle = rectangle
+
+    def get_type(self):
+        return 'rectangle'
+
+    def contains_point(self, point):
+        return self.rectangle.contains(point)
+
+    def move_by(self, offset):
+        self.rectangle.moveTo(self.rectangle.topLeft() + offset)
+
+    def draw(self, painter, scale_factor):
+        # 创建缩放后的矩形
+        scaled_rect = QRect(
+            int(self.rectangle.x() * scale_factor),
+            int(self.rectangle.y() * scale_factor),
+            int(self.rectangle.width() * scale_factor),
+            int(self.rectangle.height() * scale_factor)
         )
-        if file_name:
-            self.label.set_image(file_name)
 
-    def keyPressEvent(self, event):
-        super().keyPressEvent(event)
-
-    def wheelEvent(self, event):
-        """处理滚轮事件实现图片缩放功能"""
-        # 检查是否按住了Ctrl键
-        if event.modifiers() == Qt.ControlModifier:
-            # 获取滚轮滚动的角度
-            angle_delta = event.angleDelta().y()
-            
-            # 限制缩放次数为10次
-            if (angle_delta > 0 and self.zoom_count < 10) or (angle_delta < 0 and self.zoom_count > -10):
-                # 根据滚轮滚动方向调整缩放因子
-                if angle_delta > 0:
-                    # 放大：每次增加10%
-                    self.scale_factor *= 1.1
-                    self.zoom_count += 1
-                else:
-                    # 缩小：每次减少10%，但不能小于0.1倍
-                    self.scale_factor = max(0.1, self.scale_factor * 0.9)
-                    self.zoom_count -= 1
-                
-                # 重新调整图片大小
-                self.adjustSize()
-                self.update()
+        # 根据状态设置画笔
+        if self.selected:
+            painter.setPen(QPen(Qt.green, 3, Qt.SolidLine))
+        elif self.highlighted:
+            painter.setPen(QPen(Qt.yellow, 3, Qt.SolidLine))
         else:
-            # 如果没有按住Ctrl键，使用默认的滚轮行为
-            super().wheelEvent(event)
+            painter.setPen(QPen(Qt.red, 2, Qt.SolidLine))
 
-    def switch_to_rectangle_mode(self):
-        """切换到矩形模式"""
-        self.rect_action.setChecked(True)
-        self.polygon_action.setChecked(False)
-        self.rect_tool_button.setChecked(True)
-        self.polygon_tool_button.setChecked(False)
-        self.label.set_mode('rectangle')
+        # 绘制矩形
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(scaled_rect)
 
-    def switch_to_polygon_mode(self):
-        """切换到多边形模式"""
-        self.rect_action.setChecked(False)
-        self.polygon_action.setChecked(True)
-        self.rect_tool_button.setChecked(False)
-        self.polygon_tool_button.setChecked(True)
-        self.label.set_mode('polygon')
+        # 绘制标签
+        if self.label:
+            font = QFont()
+            font.setPointSize(14)
+            painter.setFont(font)
+            text_rect = QRect(scaled_rect.topLeft(), QPoint(
+                scaled_rect.right(),
+                scaled_rect.top() + 25
+            ))
+            painter.drawText(text_rect, Qt.AlignCenter, self.label)
+
+        # 如果被选中，绘制控制点
+        if self.selected:
+            handle_size = 6
+            painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
+            painter.setBrush(Qt.green)
+            painter.drawEllipse(scaled_rect.topLeft(), handle_size, handle_size)
+            painter.drawEllipse(scaled_rect.topRight(), handle_size, handle_size)
+            painter.drawEllipse(scaled_rect.bottomLeft(), handle_size, handle_size)
+            painter.drawEllipse(scaled_rect.bottomRight(), handle_size, handle_size)
+            painter.setBrush(Qt.NoBrush)
+
+    def get_center(self):
+        return self.rectangle.center()
 
 
-# 用于表示一个多边形的数据结构
+class PolygonAnnotation(Annotation):
+    """多边形注解类"""
+    def __init__(self, points=None, label=""):
+        super().__init__(label)
+        self.points = points if points is not None else []
+        self.closed = False
+        self.parent = None  # 添加对父对象的引用
+
+    def get_type(self):
+        return 'polygon'
+
+    def contains_point(self, point):
+        """检查点是否在多边形内部"""
+        if not self.closed or len(self.points) < 3:
+            return False
+
+        polygon = QPolygon()
+        for p in self.points:
+            polygon.append(p)
+        return polygon.containsPoint(point, Qt.OddEvenFill)
+
+    def move_by(self, offset):
+        """移动多边形"""
+        for i, point in enumerate(self.points):
+            self.points[i] = point + offset
+
+    def draw(self, painter, scale_factor):
+        """绘制多边形"""
+        if len(self.points) < 1:
+            return
+
+        # 根据状态设置画笔
+        if self.selected:
+            painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
+        elif self.highlighted:
+            painter.setPen(QPen(Qt.yellow, 1, Qt.SolidLine))
+        else:
+            painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
+
+        # 绘制点之间的连接线（缩放后）
+        scaled_points = []
+        for point in self.points:
+            scaled_points.append(QPoint(
+                int(point.x() * scale_factor),
+                int(point.y() * scale_factor)
+            ))
+
+        if not self.closed:
+            for i in range(len(scaled_points) - 1):
+                painter.drawLine(scaled_points[i], scaled_points[i + 1])
+        else:
+            # 如果多边形已经闭合，绘制完整的多边形边框
+            for i in range(len(scaled_points)):
+                painter.drawLine(scaled_points[i], scaled_points[(i + 1) % len(scaled_points)])
+
+        # 如果被选中，绘制控制点
+        if self.selected:
+            painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
+            painter.setBrush(Qt.green)
+            for point_index, scaled_point in enumerate(scaled_points):
+                # 起始点用较大绿色圆形点绘制
+                if point_index == 0:
+                    painter.drawEllipse(scaled_point, 6, 6)
+                else:
+                    # 其他点用普通绿色圆形点绘制
+                    painter.drawEllipse(scaled_point, 5, 5)
+
+        # 绘制标签
+        if self.label and len(self.points) > 0:
+            # 计算多边形的中心点（缩放后）
+            scaled_points = []
+            for point in self.points:
+                scaled_points.append(QPoint(
+                    int(point.x() * scale_factor),
+                    int(point.y() * scale_factor)
+                ))
+
+            center_x = sum(point.x() for point in scaled_points) / len(scaled_points)
+            center_y = sum(point.y() for point in scaled_points) / len(scaled_points)
+
+            # 设置文本颜色
+            if self.selected:
+                painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
+            elif self.highlighted:
+                painter.setPen(QPen(Qt.yellow, 1, Qt.SolidLine))
+            else:
+                painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
+            # 绘制标签文本
+            font = QFont()
+            font.setPointSize(14)
+            painter.setFont(font)
+            painter.drawText(int(center_x), int(center_y), self.label)
+
+    def get_center(self):
+        """获取多边形中心点"""
+        if not self.points:
+            return QPoint(0, 0)
+        center_x = sum(point.x() for point in self.points) / len(self.points)
+        center_y = sum(point.y() for point in self.points) / len(self.points)
+        return QPoint(int(center_x), int(center_y))
+
+
 class PolygonData:
     def __init__(self):
         self.points = []  # 存储多边形的点
@@ -156,28 +234,25 @@ class ImageLabel(QLabel):
         self.annotation_mode = False  # 标注模式开关
         self.current_annotation_label = ""  # 当前标注的标签内容
 
-        # 矩形框相关属性
-        self.rectangle_infos = []  # 存储包含标签信息的矩形框
+        # 注解相关属性
+        self.annotations = []  # 存储所有已完成的注解
         self.current_rectangle = None  # 当前正在绘制的矩形框
-        self.selected_rectangle_info = None  # 当前选中的矩形框信息
-        self.highlighted_rectangles = []  # 当前高亮的矩形框列表（仅高亮，不可编辑）
+        self.current_polygon = PolygonData()  # 当前正在绘制的多边形
+        self.selected_annotation = None  # 当前选中的注解
+        self.highlighted_annotations = []  # 当前高亮的注解列表（仅高亮，不可编辑）
         self.drawing = False
-        self.dragging = False  # 是否正在拖动矩形框
+        self.dragging = False  # 是否正在拖动注解
         self.resizing = False  # 是否正在调整矩形框大小
         self.drag_start_point = QPoint()  # 拖动起始点
-        self.drag_rectangle_start_pos = QPoint()  # 被拖动矩形框的初始位置
+        self.drag_annotation_start_pos = QPoint()  # 被拖动注解的初始位置
         self.resize_handle = None  # 调整大小的控制点位置
         self.resize_rectangle_start_rect = QRect()  # 调整大小时矩形框的初始状态
 
         # 多边形相关属性
-        self.polygons = []  # 存储所有已完成的多边形
-        self.current_polygon = PolygonData()  # 当前正在绘制的多边形
-        self.selected_polygon_index = None  # 当前选中的多边形索引
         self.selected_point_info = None  # 当前选中的点信息 (polygon_index, point_index)
         self.dragging_polygon = False  # 是否正在拖拽多边形
         self.drag_start_position = QPoint()  # 拖拽起始位置
         self.original_polygon_points = []  # 拖拽前的多边形点位置
-        self.highlighted_polygons = []  # 当前高亮的多边形索引列表（仅高亮，不可编辑）
 
         # 设置焦点策略
         self.setFocusPolicy(Qt.StrongFocus)
@@ -199,19 +274,17 @@ class ImageLabel(QLabel):
         self.scale_factor = 1.0  # 重置缩放因子
         self.zoom_count = 0      # 重置缩放计数器
 
-        # 重置矩形框相关属性
-        self.rectangle_infos = []
+        # 重置注解相关属性
+        self.annotations = []
         self.current_rectangle = None
-        self.selected_rectangle_info = None
-        self.highlighted_rectangles = []  # 重置高亮矩形列表
+        self.selected_annotation = None
+        self.highlighted_annotations = []  # 重置高亮注解列表
         self.drawing = False
         self.dragging = False
         self.resizing = False
 
         # 重置多边形相关属性
-        self.polygons = []
         self.current_polygon = PolygonData()
-        self.selected_polygon_index = None
         self.selected_point_info = None
         self.dragging_polygon = False
 
@@ -236,8 +309,13 @@ class ImageLabel(QLabel):
         annotations = load_yolo_annotations(self.file_path, self.class_names)
         for annotation in annotations:
             if annotation['type'] == 'rectangle':
-                rect_info = RectangleInfo(annotation['rectangle'], annotation['label'])
-                self.rectangle_infos.append(rect_info)
+                rect_annotation = RectangleAnnotation(annotation['rectangle'], annotation['label'])
+                self.annotations.append(rect_annotation)
+            elif annotation['type'] == 'polygon':
+                polygon_annotation = PolygonAnnotation(annotation['points'], annotation['label'])
+                polygon_annotation.closed = True  # 从文件加载的多边形应该是闭合的
+                polygon_annotation.parent = self  # 设置父对象引用
+                self.annotations.append(polygon_annotation)
 
         # 发出标注更新信号
         self.annotations_updated.emit(self)
@@ -249,44 +327,15 @@ class ImageLabel(QLabel):
 
         # 收集所有类别名称
         class_names = []
-        for rect_info in self.rectangle_infos:
-            if rect_info.label and rect_info.label not in class_names:
-                class_names.append(rect_info.label)
-
-        for polygon in self.polygons:
-            if polygon.label and polygon.label not in class_names:
-                class_names.append(polygon.label)
+        for annotation in self.annotations:
+            if annotation.label and annotation.label not in class_names:
+                class_names.append(annotation.label)
 
         if self.current_polygon.label and self.current_polygon.label not in class_names:
             class_names.append(self.current_polygon.label)
 
         # 保存标注文件
         save_yolo_annotations(self.file_path, self, class_names)
-
-    def set_mode(self, mode):
-        """设置当前模式"""
-        self.mode = mode
-        self.update()
-
-    def start_annotation_mode(self):
-        """开启标注模式"""
-        # 弹出对话框输入当前标注的内容
-        label, ok = QInputDialog.getText(self, "标注模式", "请输入标注内容（可输入多个类型，用逗号分隔）:")
-        if ok and label:
-            self.annotation_mode = True
-            self.current_annotation_label = label
-            # 设置鼠标样式为十字准星
-            self.setCursor(Qt.CrossCursor)
-        else:
-            self.annotation_mode = False
-            self.current_annotation_label = ""
-
-    def exit_annotation_mode(self):
-        """退出标注模式"""
-        self.annotation_mode = False
-        self.current_annotation_label = ""
-        # 恢复鼠标样式为默认
-        self.setCursor(Qt.ArrowCursor)
 
     def get_annotations(self):
         """获取所有标注信息，包括位置和标签
@@ -296,21 +345,20 @@ class ImageLabel(QLabel):
         """
         annotations = []
 
-        # 添加矩形标注信息
-        for rect_info in self.rectangle_infos:
-            annotations.append({
-                'type': 'rectangle',
-                'rectangle': rect_info.rectangle,
-                'label': rect_info.label
-            })
-
-        # 添加多边形标注信息
-        for polygon in self.polygons:
-            annotations.append({
-                'type': 'polygon',
-                'points': polygon.points,
-                'label': polygon.label
-            })
+        # 添加注解信息
+        for annotation in self.annotations:
+            if isinstance(annotation, RectangleAnnotation):
+                annotations.append({
+                    'type': 'rectangle',
+                    'rectangle': annotation.rectangle,
+                    'label': annotation.label
+                })
+            elif isinstance(annotation, PolygonAnnotation):
+                annotations.append({
+                    'type': 'polygon',
+                    'points': annotation.points,
+                    'label': annotation.label
+                })
 
         # 添加当前正在绘制的多边形（如果有点的话）
         if len(self.current_polygon.points) > 0:
@@ -330,8 +378,7 @@ class ImageLabel(QLabel):
             bool: 如果有选中的标注元素返回True，否则返回False
         """
         return (self.selected_point_info is not None or
-                self.selected_polygon_index is not None or
-                self.selected_rectangle_info is not None)
+                self.selected_annotation is not None)
 
     def delete_selected(self):
         """删除选中的标注（点、多边形或矩形框）"""
@@ -342,7 +389,8 @@ class ImageLabel(QLabel):
             if poly_index == -1:
                 polygon = self.current_polygon
             else:
-                polygon = self.polygons[poly_index]
+                # 对于新的注解系统，我们需要特殊处理
+                pass
 
             # 删除选中的点
             del polygon.points[point_index]
@@ -354,49 +402,32 @@ class ImageLabel(QLabel):
                 # 如果是已完成的多边形，将其移回当前多边形继续编辑
                 if poly_index != -1:
                     self.current_polygon = polygon
-                    del self.polygons[poly_index]
-                    self.selected_polygon_index = -1  # 设置为当前多边形
+                    # 对于新的注解系统，我们需要特殊处理
+                    pass
 
             # 重置选中点
             self.selected_point_info = None
             self.update()
-        elif self.selected_polygon_index is not None:
-            # 如果选中了整个多边形，则删除整个多边形
-            if self.selected_polygon_index < len(self.polygons):
-                del self.polygons[self.selected_polygon_index]
-            self.selected_polygon_index = None
-            self.update()
-        elif self.selected_rectangle_info:
-            # 如果选中了矩形框，则删除矩形框
-            self.rectangle_infos.remove(self.selected_rectangle_info)
-            self.selected_rectangle_info = None
+        elif self.selected_annotation:
+            # 如果选中了注解，则删除注解
+            if self.selected_annotation in self.annotations:
+                self.annotations.remove(self.selected_annotation)
+            self.selected_annotation = None
             self.update()
 
         # 清除高亮状态
-        self.highlighted_rectangles = []
-        self.highlighted_polygons = []
-        
+        self.clear_highlights()
+
         # 保存YOLO标注
         self.save_yolo_annotations()
         # 发出标注更新信号
         self.annotations_updated.emit(self)
 
-    def edit_rectangle_label(self, rect_info):
-        """编辑矩形框的标签"""
-        label, ok = QInputDialog.getText(self, "编辑标注信息", "请输入标注内容:", text=rect_info.label)
+    def edit_annotation_label(self, annotation):
+        """编辑注解的标签"""
+        label, ok = QInputDialog.getText(self, "编辑标注信息", "请输入标注内容:", text=annotation.label)
         if ok:
-            rect_info.label = label
-            self.update()
-            # 保存YOLO标注
-            self.save_yolo_annotations()
-            # 发出标注更新信号
-            self.annotations_updated.emit(self)
-
-    def edit_polygon_label(self, polygon, default_label=""):
-        """编辑多边形的标签"""
-        label, ok = QInputDialog.getText(self, '修改多边形标注', '请输入标注信息:', text=default_label)
-        if ok:
-            polygon.label = label
+            annotation.label = label
             self.update()
             # 保存YOLO标注
             self.save_yolo_annotations()
@@ -429,9 +460,9 @@ class ImageLabel(QLabel):
         threshold = 10  # 点击检测范围
 
         # 检查已完成的多边形
-        for poly_index, polygon in enumerate(self.polygons):
-            # 只检查闭合的多边形
-            if polygon.closed:
+        for poly_index, polygon in enumerate(self.annotations):
+            # 只检查闭合的多边形并且是多边形注解
+            if isinstance(polygon, PolygonAnnotation) and polygon.closed:
                 for point_index, point in enumerate(polygon.points):
                     distance = ((click_pos.x() - point.x()) ** 2 + (click_pos.y() - point.y()) ** 2) ** 0.5
                     if distance <= threshold:
@@ -448,8 +479,8 @@ class ImageLabel(QLabel):
 
     def get_polygon_at_point(self, point):
         """检查点是否在已完成多边形内部，如果是则返回多边形索引"""
-        for poly_index, polygon in enumerate(self.polygons):
-            if polygon.closed and len(polygon.points) >= 3:
+        for poly_index, polygon in enumerate(self.annotations):
+            if isinstance(polygon, PolygonAnnotation) and polygon.closed and len(polygon.points) >= 3:
                 polygon_obj = QPolygon()
                 for p in polygon.points:
                     polygon_obj.append(p)
@@ -481,202 +512,148 @@ class ImageLabel(QLabel):
     def clear_selection(self):
         """
         统一清除所有选中状态的方法
-        
+
         清除所有选中的标注元素（矩形框、多边形或点）的选中状态，
         同时清除高亮状态
         """
         # 清除所有选中状态
-        self.selected_rectangle_info = None
-        self.selected_polygon_index = None
+        self.selected_annotation = None
         self.selected_point_info = None
-        
+
         # 清除高亮状态
-        self.highlighted_rectangles = []
-        self.highlighted_polygons = []
-        
+        self.clear_highlights()
+
         # 更新界面
         self.update()
 
-    def select_rectangle(self, rectangle):
+    def select_annotation(self, annotation):
         """
-        选中指定的矩形框（可编辑状态）
+        选中指定的注解（可编辑状态）
 
         Args:
-            rectangle: 要选中的矩形框
+            annotation: 要选中的注解对象
         """
-        # 查找对应的RectangleInfo对象
-        for rect_info in self.rectangle_infos:
-            if rect_info.rectangle == rectangle:
-                # 只有当当前选中的不是这个矩形时才更新
-                if self.selected_rectangle_info != rect_info:
-                    self.selected_rectangle_info = rect_info
-                    self.selected_polygon_index = None
-                    self.selected_point_info = None
-                    # 清除高亮状态
-                    self.highlighted_rectangles = []
-                    self.highlighted_polygons = []
-                    self.update()
-                    # 发出信号，通知详情面板也选中对应的条目
-                    self.annotation_selected_in_image.emit(rect_info)
-                return
+        # 只有当当前选中的不是这个注解时才更新
+        if self.selected_annotation != annotation:
+            self.selected_annotation = annotation
+            self.selected_point_info = None
+            # 清除高亮状态
+            self.clear_highlights()
+            # 发出信号，通知详情面板也选中对应的条目
+            self.annotation_selected_in_image.emit(annotation)
+        else:
+            # 如果选中的注解没有变化，避免重复发送信号
+            logger.debug("图片标注组件选中注解: %s (已选中，跳过信号发送)",
+                        type(annotation).__name__ if annotation else "None")
 
-    def select_polygon(self, polygon_index):
+    def show_control_points(self, annotation):
         """
-        选中指定的多边形（可编辑状态）
-
-        Args:
-            polygon_index: 要选中的多边形索引
-        """
-        if 0 <= polygon_index < len(self.polygons):
-            # 只有当当前选中的不是这个多边形时才更新
-            if self.selected_polygon_index != polygon_index:
-                self.selected_polygon_index = polygon_index
-                self.selected_rectangle_info = None
-                self.selected_point_info = None
-                # 清除高亮状态
-                self.highlighted_rectangles = []
-                self.highlighted_polygons = []
-                self.update()
-                # 发出信号，通知详情面板也选中对应的条目
-                self.annotation_selected_in_image.emit(self.polygons[polygon_index])
-
-    def select_annotation(self, annotation_data):
-        """
-        统一选中标注对象（可编辑状态）
+        统一方法用于在选中注解时显示控制点
         
         Args:
-            annotation_data: 标注数据字典，包含type和其他相关信息
+            annotation: 要显示控制点的注解对象
+        """
+        if annotation is None:
+            return
+            
+        # 设置选中状态
+        annotation.selected = True
+        
+        # 根据注解类型显示相应的控制点
+        if isinstance(annotation, RectangleAnnotation):
+            # 矩形显示四个角点
+            pass  # 矩形的控制点在draw方法中处理
+        elif isinstance(annotation, PolygonAnnotation):
+            # 多边形显示所有顶点
+            pass  # 多边形的控制点在draw方法中处理
+        
+        self.update()
+
+    def select_annotation_by_data(self, annotation_data):
+        """
+        根据注解数据选中注解
+
+        Args:
+            annotation_data: 注解数据字典，包含type和其他相关信息
         """
         # 处理取消选中的情况
         if annotation_data is None:
             self.clear_selection()
             return
-        
+
         if annotation_data['type'] == 'rectangle':
-            self.select_rectangle(annotation_data['rectangle'])
-        elif annotation_data['type'] == 'polygon':
-            # 查找匹配的多边形索引
-            for i, polygon in enumerate(self.polygons):
-                if (polygon.points == annotation_data['points'] and 
-                    polygon.label == annotation_data['label']):
-                    self.select_polygon(i)
+            # 查找匹配的矩形注解
+            for annotation in self.annotations:
+                if (isinstance(annotation, RectangleAnnotation) and
+                    annotation.rectangle == annotation_data['rectangle'] and
+                    annotation.label == annotation_data['label']):
+                    self.select_annotation(annotation)
                     return
+        elif annotation_data['type'] == 'polygon':
+            # 查找匹配的多边形注解
+            for annotation in self.annotations:
+                if (isinstance(annotation, PolygonAnnotation) and
+                    annotation.points == annotation_data['points'] and
+                    annotation.label == annotation_data['label']):
+                    self.select_annotation(annotation)
+                    return
+        logger.debug("未找到匹配的注解进行选中: %s", annotation_data)
 
-    def highlight_polygons(self, polygon_indices):
-        """ 
-        高亮指定索引的多边形列表（仅高亮，不可编辑）
-        
-        Args:
-            polygon_indices: 要高亮的多边形索引列表
+    def highlight_annotations(self, annotations):
         """
-        self.highlighted_polygons = polygon_indices
-        self.highlighted_rectangles = []  # 清除矩形高亮
+        高亮指定的注解列表（仅高亮，不可编辑）
+
+        Args:
+            annotations: 要高亮的注解列表
+        """
+        self.highlighted_annotations = annotations
         # 清除选中状态
-        self.selected_rectangle_info = None
-        self.selected_polygon_index = None
-        self.selected_point_info = None
-        self.update()
-
-    def highlight_rectangles(self, rectangles):
-        """
-        高亮指定的矩形框列表（仅高亮，不可编辑）
-
-        Args:
-            rectangles: 要高亮的矩形框列表
-        """
-        self.highlighted_rectangles = rectangles
-        self.highlighted_polygons = []  # 清除多边形高亮
-        # 清除选中状态
-        self.selected_rectangle_info = None
-        self.selected_polygon_index = None
-        self.selected_point_info = None
-        self.update()
-
-    def highlight_polygons_by_label(self, label):
-        """
-        高亮指定标签的所有多边形
-
-        Args:
-            label: 要高亮的标签
-        """
-        self.highlighted_polygons = []  # 存储高亮的多边形索引
-        for i, polygon in enumerate(self.polygons):
-            if polygon.label == label:
-                self.highlighted_polygons.append(i)
-        # 清除矩形高亮和其他选中状态
-        self.highlighted_rectangles = []
-        self.selected_rectangle_info = None
-        self.selected_polygon_index = None
+        self.clear_highlights()
+        self.selected_annotation = None
         self.selected_point_info = None
         self.update()
 
     def highlight_annotations_by_labels(self, labels):
         """
-        根据标签高亮所有相关的标注（包括矩形和多边形）
+        根据标签高亮所有相关的注解
 
         Args:
             labels: 要高亮的标签列表
         """
-        # 高亮矩形
-        rectangles = []
-        for rect_info in self.rectangle_infos:
-            if rect_info.label in labels:
-                rectangles.append(rect_info.rectangle)
-        self.highlighted_rectangles = rectangles
+        # 查找匹配标签的注解
+        matched_annotations = []
+        for annotation in self.annotations:
+            if annotation.label in labels:
+                matched_annotations.append(annotation)
 
-        # 高亮多边形
-        self.highlighted_polygons = []
-        for i, polygon in enumerate(self.polygons):
-            if polygon.label in labels:
-                self.highlighted_polygons.append(i)
+        self.highlight_annotations(matched_annotations)
 
-        # 清除选中状态
-        self.selected_rectangle_info = None
-        self.selected_polygon_index = None
-        self.selected_point_info = None
-        self.update()
-
-    def clear_highlights_method(self, data_to_clear):
+    def clear_highlights(self, data_to_clear=None):
         """
-        统一清除高亮方法，接收参数对象，从中获取标签、形状和点位来判断处理
-        
+        统一清除高亮方法
+
         Args:
             data_to_clear: 需要清除高亮的数据对象
+                - None 或空列表: 清除所有高亮状态
+                - 标注对象列表: 清除指定标注的高亮状态
         """
         # 如果传入的是空列表或None，清除所有高亮状态
         if not data_to_clear:
-            self.highlighted_rectangles = []
-            self.highlighted_polygons = []
+            self.highlighted_annotations = []
             self.update()
             return
-            
-        # 如果传入的是标签列表，则清除这些标签相关的高亮
-        if isinstance(data_to_clear, list) and all(isinstance(item, str) for item in data_to_clear):
-            # 根据标签清除高亮
-            self.highlight_annotations_by_labels([])
-            return
-            
+
         # 如果传入的是标注对象列表
-        if isinstance(data_to_clear, list) and all(isinstance(item, dict) for item in data_to_clear):
+        if isinstance(data_to_clear, list):
             # 遍历并清除特定标注的高亮
             for annotation in data_to_clear:
-                if annotation.get('type') == 'rectangle' and annotation['rectangle'] in self.highlighted_rectangles:
-                    self.highlighted_rectangles.remove(annotation['rectangle'])
-                elif annotation.get('type') == 'polygon':
-                    # 对于多边形，可能需要更复杂的匹配逻辑
-                    # 这里简单地检查points和label是否匹配
-                    for i, polygon in enumerate(self.polygons):
-                        if (polygon.points == annotation['points'] and 
-                            polygon.label == annotation['label'] and
-                            i in self.highlighted_polygons):
-                            self.highlighted_polygons.remove(i)
-                            break
+                if annotation in self.highlighted_annotations:
+                    self.highlighted_annotations.remove(annotation)
             self.update()
             return
-            
+
         # 如果是其他情况，默认清除所有高亮
-        self.highlighted_rectangles = []
-        self.highlighted_polygons = []
+        self.highlighted_annotations = []
         self.update()
 
     def mousePressEvent(self, event):
@@ -698,31 +675,31 @@ class ImageLabel(QLabel):
                             self.is_point_near_start(clicked_point)):
                         # 闭合当前多边形
                         self.current_polygon.closed = True
-                        # 将当前多边形添加到已完成多边形列表
-                        self.polygons.append(self.current_polygon)
+                        # 创建新的多边形注解
+                        polygon_annotation = PolygonAnnotation(self.current_polygon.points, self.current_polygon.label)
+                        polygon_annotation.closed = True
+                        polygon_annotation.parent = self  # 设置父对象引用
+                        self.annotations.append(polygon_annotation)
                         # 使用预设标签
                         if self.current_annotation_label:
-                            self.polygons[-1].label = self.current_annotation_label
+                            polygon_annotation.label = self.current_annotation_label
                             # 输入标签后通知详情面板更新
-                            self.annotation_selected_in_image.emit(self.polygons[-1])
+                            self.annotation_selected_in_image.emit(polygon_annotation)
                         else:
                             # 否则弹出对话框输入标注信息
                             label, ok = QInputDialog.getText(self, '多边形标注', '请输入标注信息:')
                             if ok:
-                                self.polygons[-1].label = label
+                                polygon_annotation.label = label
                                 # 输入标签后通知详情面板更新
-                                self.annotation_selected_in_image.emit(self.polygons[-1])
+                                self.annotation_selected_in_image.emit(polygon_annotation)
                             else:
                                 # 如果用户取消输入，则从列表中移除多边形
-                                self.polygons.pop()
+                                self.annotations.pop()
                         # 创建新的多边形用于接下来的绘制
                         self.current_polygon = PolygonData()
                         self.selected_point_info = None
-                        self.selected_polygon_index = None
                         # 清除高亮状态
-                        self.highlighted_rectangles = []
-                        self.highlighted_polygons = []
-                        self.update()
+                        self.clear_highlights()
                         # 保存YOLO标注
                         self.save_yolo_annotations()
                         # 发出标注更新信号
@@ -733,10 +710,10 @@ class ImageLabel(QLabel):
                         self.update()
                     return
 
-            # ========== 矩形框处理逻辑 ==========
-            # 检查是否点击了某个已存在的矩形框的控制点
-            if self.selected_rectangle_info:
-                handle = self.get_resize_handle_at_point(clicked_point, self.selected_rectangle_info.rectangle)
+            # ========== 注解处理逻辑 ==========
+            # 检查是否点击了某个已存在的注解的控制点
+            if self.selected_annotation and isinstance(self.selected_annotation, RectangleAnnotation):
+                handle = self.get_resize_handle_at_point(clicked_point, self.selected_annotation.rectangle)
                 if handle:
                     # 准备调整大小操作
                     self.resizing = True
@@ -744,229 +721,141 @@ class ImageLabel(QLabel):
                     self.dragging_polygon = False
                     self.resize_handle = handle
                     self.drag_start_point = clicked_point
-                    self.resize_rectangle_start_rect = QRect(self.selected_rectangle_info.rectangle)
+                    self.resize_rectangle_start_rect = QRect(self.selected_annotation.rectangle)
                     self.update()
                     return
 
-            # 检查是否点击了某个已存在的矩形框
-            for rect_info in self.rectangle_infos:
-                if rect_info.rectangle.contains(clicked_point):
-                    # 只有当点击的不是当前选中的矩形时才更新选中状态
-                    if self.selected_rectangle_info != rect_info:
-                        self.selected_rectangle_info = rect_info
-                        self.drawing = False
-                        self.current_rectangle = None
-                        self.selected_polygon_index = None
-                        self.selected_point_info = None
-                        # 清除高亮状态
-                        self.highlighted_rectangles = []
-                        self.highlighted_polygons = []
-
-                        # 准备拖动操作
-                        self.dragging = True
-                        self.resizing = False
-                        self.dragging_polygon = False
-                        self.drag_start_point = clicked_point
-                        self.drag_rectangle_start_pos = rect_info.rectangle.topLeft()
-
-                        self.update()
-                        # 发出信号，通知详情面板也选中对应的条目
-                        self.annotation_selected_in_image.emit(rect_info)
-                    else:
-                        # 如果点击的是已选中的矩形，准备拖动
-                        self.dragging = True
-                        self.resizing = False
-                        self.dragging_polygon = False
-                        self.drag_start_point = clicked_point
-                        self.drag_rectangle_start_pos = rect_info.rectangle.topLeft()
-                    # 不再发送annotations_updated信号，避免冲突
-                    return
-
-            # ========== 多边形处理逻辑 ==========
-            # 检查是否点击了当前多边形的起始点并且点数大于等于3
-            # 这个检查必须在点选中之前，以确保优先闭合多边形
-            if (len(self.current_polygon.points) >= 3 and
-                    self.is_point_near_start(clicked_point)):
-                # 闭合当前多边形
-                self.current_polygon.closed = True
-                # 将当前多边形添加到已完成多边形列表
-                self.polygons.append(self.current_polygon)
-                # 如果在标注模式下，使用预设标签
-                if self.annotation_mode and self.current_annotation_label:
-                    self.polygons[-1].label = self.current_annotation_label
-                    # 输入标签后通知详情面板更新
-                    self.annotation_selected_in_image.emit(self.polygons[-1])
-                else:
-                    # 否则弹出对话框输入标注信息
-                    label, ok = QInputDialog.getText(self, '多边形标注', '请输入标注信息:')
-                    if ok:
-                        self.polygons[-1].label = label
-                        # 输入标签后通知详情面板更新
-                        self.annotation_selected_in_image.emit(self.polygons[-1])
-                    else:
-                        # 如果用户取消输入，则从列表中移除多边形
-                        self.polygons.pop()
-                # 创建新的多边形用于接下来的绘制
-                self.current_polygon = PolygonData()
-                self.selected_point_info = None
-                self.selected_polygon_index = None
-                # 清除高亮状态
-                self.highlighted_rectangles = []
-                self.highlighted_polygons = []
-                self.update()
-                # 保存YOLO标注
-                self.save_yolo_annotations()
-                # 发出标注更新信号
-                self.annotations_updated.emit(self)
-                return
-
-            # 检查是否点击了点
+            # 检查是否点击了多边形的控制点
             point_info = self.get_point_near_click(clicked_point)
             if point_info is not None:
                 poly_index, point_index = point_info
-                # 只有闭合的多边形才允许选中点
-                if (poly_index == -1 and self.current_polygon.closed) or (poly_index >= 0 and self.polygons[poly_index].closed):
-                    # 选中点击的点
+                if poly_index >= 0:  # 已完成的多边形
+                    polygon = self.annotations[poly_index]
+                    # 选中多边形
+                    self.selected_annotation = polygon
                     self.selected_point_info = point_info
-                    self.selected_polygon_index = None  # 取消多边形选中
-                    self.selected_rectangle_info = None
+                    self.drawing = False
+                    self.current_rectangle = None
                     # 清除高亮状态
-                    self.highlighted_rectangles = []
-                    self.highlighted_polygons = []
+                    self.clear_highlights()
 
+                    # 准备调整大小操作
+                    self.resizing = True
+                    self.dragging = False
+                    self.dragging_polygon = False
+                    self.drag_start_point = clicked_point
+                    # 保存调整大小前的多边形点位置
+                    self.original_polygon_points = []
+                    for point in polygon.points:
+                        self.original_polygon_points.append(QPoint(point))
+                    self.drag_start_position = clicked_point
+
+                    # 发出信号，通知详情面板也选中对应的条目
+                    self.annotation_selected_in_image.emit(polygon)
                     self.update()
                     return
 
-            # 检查是否点击了多边形区域（仅对已完成的多边形）
-            poly_index = self.get_polygon_at_point(clicked_point)
-            if poly_index is not None:
-                # 只有当点击的不是当前选中的多边形时才更新选中状态
-                if self.selected_polygon_index != poly_index:
-                    self.selected_polygon_index = poly_index
-                    self.selected_point_info = None  # 取消点选中
-                    self.selected_rectangle_info = None
+            # 检查是否点击了某个已存在的注解
+            annotation_clicked = False
+            for annotation in reversed(self.annotations):  # 从上到下检查（后绘制的在上层）
+                if annotation.contains_point(clicked_point):
+                    annotation_clicked = True
+                    # 选中注解
+                    self.selected_annotation = annotation
+                    self.drawing = False
+                    self.current_rectangle = None
+                    self.selected_point_info = None
                     # 清除高亮状态
-                    self.highlighted_rectangles = []
-                    self.highlighted_polygons = []
-                    # 准备拖拽多边形
-                    self.dragging_polygon = True
-                    self.dragging = False
+                    self.clear_highlights()
+
+                    # 准备拖动操作（统一处理所有类型注解）
+                    self.dragging = True
                     self.resizing = False
-                    self.drag_start_position = clicked_point
-                    # 保存拖拽前的多边形点位置
-                    self.original_polygon_points = []
-                    for point in self.polygons[poly_index].points:
-                        self.original_polygon_points.append(QPoint(point))
-                    self.update()
+                    self.dragging_polygon = False
+                    self.drag_start_point = clicked_point
+                    if isinstance(annotation, RectangleAnnotation):
+                        self.drag_annotation_start_pos = annotation.rectangle.topLeft()
+                    elif isinstance(annotation, PolygonAnnotation):
+                        # 保存拖拽前的多边形点位置
+                        self.original_polygon_points = []
+                        for point in annotation.points:
+                            self.original_polygon_points.append(QPoint(point))
+                        self.drag_start_position = clicked_point
+
                     # 发出信号，通知详情面板也选中对应的条目
-                    self.annotation_selected_in_image.emit(self.polygons[poly_index])
-                else:
-                    # 如果点击的是已选中的多边形，准备拖动
-                    self.dragging_polygon = True
-                    self.dragging = False
-                    self.resizing = False
-                    self.drag_start_position = clicked_point
-                    # 保存拖拽前的多边形点位置
-                    self.original_polygon_points = []
-                    for point in self.polygons[self.selected_polygon_index].points:
-                        self.original_polygon_points.append(QPoint(point))
-                return
+                    self.annotation_selected_in_image.emit(annotation)
+                    self.update()
+                    return
 
-            # 检查是否点击了当前多边形区域（仅对已完成且闭合的当前多边形）
-            if (self.current_polygon.closed and len(self.current_polygon.points) >= 3 and
-                    self.is_point_in_current_polygon(clicked_point)):
-                self.selected_polygon_index = -1  # -1表示当前多边形
-                self.selected_point_info = None
-                self.selected_rectangle_info = None
-                # 清除高亮状态
-                self.highlighted_rectangles = []
-                self.highlighted_polygons = []
-                # 准备拖拽当前多边形
-                self.dragging_polygon = True
-                self.dragging = False
-                self.resizing = False
-                self.drag_start_position = clicked_point
-                # 保存拖拽前的多边形点位置
-                self.original_polygon_points = []
-                for point in self.current_polygon.points:
-                    self.original_polygon_points.append(QPoint(point))
-                self.update()
-                return
-
-            # 如果当前多边形已闭合且被选中，取消选中状态
-            if self.current_polygon.closed and self.selected_polygon_index == -1:
-                self.selected_polygon_index = None
-                # 清除高亮状态
-                self.highlighted_rectangles = []
-                self.highlighted_polygons = []
-                self.update()
-                return
-
-            # 如果没有点击现有图形，则取消选中状态（而不是开始绘制新图形）
-            # 点击了空白区域，取消所有选中状态和高亮状态
-            # 只有当有选中状态时才清除
-            if (self.selected_rectangle_info is not None or
-                self.selected_polygon_index is not None or
-                self.selected_point_info is not None):
+            # 如果执行到这里，说明点击的是空白区域，需要清除选中状态
+            if self.selected_annotation is not None or self.selected_point_info is not None:
                 self.clear_selection()
-
-                # 根据规范，点击空白区域取消选中时不发送事件信号
-                pass
+            # 只有在点击空白区域时才清除高亮状态
+            if not annotation_clicked:
+                self.clear_highlights()
 
     def mouseMoveEvent(self, event):
         # 更新鼠标位置
         self.mouse_pos = event.pos()
-        
+
         # 矩形框绘制和操作处理
         if self.drawing and self.current_rectangle:
             # 更新当前矩形框的结束点
             self.current_rectangle.setBottomRight(event.pos())
             self.update()
-        elif self.dragging and self.selected_rectangle_info:
+        elif self.dragging and self.selected_annotation and isinstance(self.selected_annotation, RectangleAnnotation):
             # 计算鼠标移动的距离
             offset = event.pos() - self.drag_start_point
             # 更新选中矩形框的位置
-            new_top_left = self.drag_rectangle_start_pos + offset
-            self.selected_rectangle_info.rectangle.moveTo(new_top_left)
+            new_top_left = self.drag_annotation_start_pos + offset
+            self.selected_annotation.rectangle.moveTo(new_top_left)
             self.update()
-            # 发出信号通知详情面板更新位置
-            self.annotation_selected_in_image.emit(self.selected_rectangle_info)
-        elif self.resizing and self.selected_rectangle_info and self.resize_handle:
+            # 不在拖动过程中发送信号，避免递归调用
+            # self.annotation_selected_in_image.emit(self.selected_annotation)
+        elif self.resizing and self.selected_annotation and isinstance(self.selected_annotation, RectangleAnnotation) and self.resize_handle:
             # 根据不同的控制点调整矩形框大小
             start_rect = self.resize_rectangle_start_rect
             offset = event.pos() - self.drag_start_point
 
             if self.resize_handle == "top_left":
                 new_top_left = start_rect.topLeft() + offset
-                self.selected_rectangle_info.rectangle.setTopLeft(new_top_left)
+                self.selected_annotation.rectangle.setTopLeft(new_top_left)
             elif self.resize_handle == "top_right":
                 new_top_right = start_rect.topRight() + offset
-                self.selected_rectangle_info.rectangle.setTopRight(new_top_right)
+                self.selected_annotation.rectangle.setTopRight(new_top_right)
             elif self.resize_handle == "bottom_left":
                 new_bottom_left = start_rect.bottomLeft() + offset
-                self.selected_rectangle_info.rectangle.setBottomLeft(new_bottom_left)
+                self.selected_annotation.rectangle.setBottomLeft(new_bottom_left)
             elif self.resize_handle == "bottom_right":
                 new_bottom_right = start_rect.bottomRight() + offset
-                self.selected_rectangle_info.rectangle.setBottomRight(new_bottom_right)
+                self.selected_annotation.rectangle.setBottomRight(new_bottom_right)
 
             self.update()
         # 多边形拖拽处理
-        elif self.dragging_polygon:
+        elif self.dragging and self.selected_annotation and isinstance(self.selected_annotation, PolygonAnnotation):
             # 计算鼠标移动的距离
             offset = event.pos() - self.drag_start_position
 
             # 移动选中的多边形
-            if self.selected_polygon_index == -1:  # 当前多边形
-                for i, point in enumerate(self.current_polygon.points):
-                    self.current_polygon.points[i] = self.original_polygon_points[i] + offset
-            elif self.selected_polygon_index is not None and 0 <= self.selected_polygon_index < len(self.polygons):  # 已完成的多边形
-                polygon = self.polygons[self.selected_polygon_index]
-                for i, point in enumerate(polygon.points):
-                    polygon.points[i] = self.original_polygon_points[i] + offset
+            for i, point in enumerate(self.selected_annotation.points):
+                self.selected_annotation.points[i] = self.original_polygon_points[i] + offset
 
             self.update()
+        # 多边形调整大小处理
+        elif self.resizing and self.selected_annotation and isinstance(self.selected_annotation, PolygonAnnotation) and self.selected_point_info:
+            # 计算鼠标移动的距离
+            offset = event.pos() - self.drag_start_position
+            
+            # 调整选中点的位置
+            poly_index, point_index = self.selected_point_info
+            if poly_index >= 0 and poly_index < len(self.annotations):
+                polygon = self.annotations[poly_index]
+                if point_index < len(polygon.points):
+                    polygon.points[point_index] = self.original_polygon_points[point_index] + offset
+                    self.update()
         else:
-            super().mouseMoveEvent(event)
+            # 不满足任何特殊条件时，仍然需要更新鼠标位置
+            self.update()
 
     def mouseReleaseEvent(self, event):
         # 矩形框处理
@@ -976,25 +865,25 @@ class ImageLabel(QLabel):
 
             # 只有当矩形框有足够的大小时才添加并弹出输入框
             if self.current_rectangle.width() > 5 and self.current_rectangle.height() > 5:
-                # 创建新的矩形框信息对象
-                new_rect_info = RectangleInfo(self.current_rectangle)
-                self.rectangle_infos.append(new_rect_info)
+                # 创建新的矩形注解对象
+                new_annotation = RectangleAnnotation(self.current_rectangle)
+                self.annotations.append(new_annotation)
 
                 # 使用当前标注内容作为标签
                 if self.annotation_mode and self.current_annotation_label:
-                    new_rect_info.label = self.current_annotation_label
+                    new_annotation.label = self.current_annotation_label
                     # 输入标签后通知详情面板更新
-                    self.annotation_selected_in_image.emit(new_rect_info)
+                    self.annotation_selected_in_image.emit(new_annotation)
                 else:
                     # 如果没有标注内容，弹出输入框请求标签信息
                     label, ok = QInputDialog.getText(self, "标注信息", "请输入标注内容:")
                     if ok and label:
-                        new_rect_info.label = label
+                        new_annotation.label = label
                         # 输入标签后通知详情面板更新
-                        self.annotation_selected_in_image.emit(new_rect_info)
+                        self.annotation_selected_in_image.emit(new_annotation)
                     else:
                         # 如果用户取消输入，则从列表中移除矩形
-                        self.rectangle_infos.remove(new_rect_info)
+                        self.annotations.remove(new_annotation)
             # 如果矩形太小，则不添加到列表中
 
             # 重置当前矩形框
@@ -1015,15 +904,22 @@ class ImageLabel(QLabel):
             self.save_yolo_annotations()
             # 发出标注更新信号
             self.annotations_updated.emit(self)
-        elif self.dragging_polygon:
-            # 完成多边形拖拽操作
-            self.dragging_polygon = False
+            # 发出信号通知详情面板更新位置
+            if self.selected_annotation:
+                self.annotation_selected_in_image.emit(self.selected_annotation)
+        elif self.dragging or self.resizing:
+            # 完成拖动或调整大小操作
+            self.dragging = False
+            self.resizing = False
             self.original_polygon_points = []
             self.update()
             # 保存YOLO标注
             self.save_yolo_annotations()
             # 发出标注更新信号
             self.annotations_updated.emit(self)
+            # 发出信号通知详情面板更新位置
+            if self.selected_annotation:
+                self.annotation_selected_in_image.emit(self.selected_annotation)
         elif not self.drawing:
             # 如果不是在绘制状态，保持当前选择不变
             self.update()
@@ -1033,48 +929,26 @@ class ImageLabel(QLabel):
         if self.pixmap:
             clicked_point = event.pos()
 
-            # 检查是否双击了某个已存在的矩形框
-            for rect_info in self.rectangle_infos:
-                if rect_info.rectangle.contains(clicked_point):
-                    # 双击矩形框时编辑标签
-                    self.edit_rectangle_label(rect_info)
+            # 检查是否双击了某个已存在的注解
+            for annotation in self.annotations:
+                if annotation.contains_point(clicked_point):
+                    # 双击注解时编辑标签
+                    self.edit_annotation_label(annotation)
                     return
-
-            # 检查是否在当前多边形内部
-            if (self.current_polygon.closed and len(self.current_polygon.points) >= 3 and
-                    self.is_point_in_current_polygon(clicked_point)):
-                self.selected_polygon_index = -1  # -1表示当前多边形
-                self.selected_point_info = None
-                # 弹出对话框修改标注信息
-                self.edit_polygon_label(self.current_polygon, self.current_polygon.label)
-                self.update()
-                event.accept()
-                return
-
-            # 检查是否在已完成的多边形内部
-            poly_index = self.get_polygon_at_point(clicked_point)
-            if poly_index is not None:
-                self.selected_polygon_index = poly_index
-                self.selected_point_info = None
-                # 弹出对话框修改标注信息
-                self.edit_polygon_label(self.polygons[poly_index], self.polygons[poly_index].label)
-                self.update()
-                event.accept()
-                return
 
         super().mouseDoubleClickEvent(event)
 
     def paintEvent(self, event):
         """自定义绘制事件，绘制图像和所有标注元素"""
         super().paintEvent(event)
-        
+
         if not self.pixmap:
             return
-            
+
         # 创建绘图器
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        
+
         # 绘制图像（支持缩放）
         scaled_pixmap = self.pixmap.scaled(
             self.pixmap.width() * self.scale_factor,
@@ -1083,58 +957,22 @@ class ImageLabel(QLabel):
             Qt.SmoothTransformation
         )
         painter.drawPixmap(0, 0, scaled_pixmap)
-        
-        # ========== 绘制矩形框 ==========
-        # 绘制所有已完成的矩形框
-        for rect_info in self.rectangle_infos:
-            # 创建缩放后的矩形
-            scaled_rect = QRect(
-                int(rect_info.rectangle.x() * self.scale_factor),
-                int(rect_info.rectangle.y() * self.scale_factor),
-                int(rect_info.rectangle.width() * self.scale_factor),
-                int(rect_info.rectangle.height() * self.scale_factor)
-            )
-            
-            if rect_info == self.selected_rectangle_info:
-                # 选中的矩形框用绿色粗线绘制
-                painter.setPen(QPen(Qt.green, 3, Qt.SolidLine))
-            elif rect_info.rectangle in self.highlighted_rectangles:
-                # 高亮的矩形框用黄色粗线绘制
-                painter.setPen(QPen(Qt.yellow, 3, Qt.SolidLine))
-            else:
-                # 普通矩形框用红色细线绘制
-                painter.setPen(QPen(Qt.red, 2, Qt.SolidLine))
 
-            # 确保没有填充
-            painter.setBrush(Qt.NoBrush)
+        # 绘制高亮注解
+        for annotation in self.highlighted_annotations:
+            # 临时设置高亮状态
+            original_highlighted = annotation.highlighted
+            annotation.highlighted = True
+            annotation.draw(painter, self.scale_factor)
+            annotation.highlighted = original_highlighted
 
-            painter.drawRect(scaled_rect)
-
-            # 绘制标签文本
-            if rect_info.label:
-                font = QFont()
-                font.setPointSize(14)  # 增大字体
-                painter.setFont(font)
-                text_rect = QRect(scaled_rect.topLeft(), QPoint(
-                    scaled_rect.right(),
-                    scaled_rect.top() + 25  # 调整文本框高度以适应更大的字体
-                ))
-                painter.drawText(text_rect, Qt.AlignCenter, rect_info.label)
-
-            # 如果矩形框被选中，绘制控制点（四个角的小圆点）
-            if rect_info == self.selected_rectangle_info:
-                handle_size = 6  # 增大控制点绘制大小
-                painter.setPen(QPen(Qt.green, 2, Qt.SolidLine))  # 使用绿色与选中框保持一致
-                painter.setBrush(Qt.green)
-
-                # 绘制四个角的控制点
-                painter.drawEllipse(scaled_rect.topLeft(), handle_size, handle_size)
-                painter.drawEllipse(scaled_rect.topRight(), handle_size, handle_size)
-                painter.drawEllipse(scaled_rect.bottomLeft(), handle_size, handle_size)
-                painter.drawEllipse(scaled_rect.bottomRight(), handle_size, handle_size)
-
-                # 重置画笔填充状态，避免影响其他绘制
-                painter.setBrush(Qt.NoBrush)
+        # 绘制所有已完成的注解
+        for annotation in self.annotations:
+            # 临时设置选中状态
+            original_selected = annotation.selected
+            annotation.selected = (annotation == self.selected_annotation)
+            annotation.draw(painter, self.scale_factor)
+            annotation.selected = original_selected
 
         # 绘制当前正在绘制的矩形框
         if self.current_rectangle:
@@ -1145,154 +983,14 @@ class ImageLabel(QLabel):
                 int(self.current_rectangle.width() * self.scale_factor),
                 int(self.current_rectangle.height() * self.scale_factor)
             )
-            painter.setPen(QPen(Qt.red, 2, Qt.SolidLine))
+            painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
             painter.setBrush(Qt.NoBrush)
             painter.drawRect(scaled_current_rect)
-
-        # 绘制高亮多边形
-        for poly_index in self.highlighted_polygons:
-            if poly_index < len(self.polygons):
-                polygon = self.polygons[poly_index]
-                if len(polygon.points) > 1:
-                    # 高亮多边形用黄色粗线绘制，与矩形保持一致
-                    painter.setPen(QPen(Qt.yellow, 3, Qt.SolidLine))
-                    
-                    # 绘制点之间的连接线（缩放后）
-                    scaled_points = []
-                    for point in polygon.points:
-                        scaled_points.append(QPoint(
-                            int(point.x() * self.scale_factor),
-                            int(point.y() * self.scale_factor)
-                        ))
-                    
-                    if not polygon.closed:
-                        for i in range(len(scaled_points) - 1):
-                            painter.drawLine(scaled_points[i], scaled_points[i + 1])
-                    else:
-                        # 如果多边形已经闭合，绘制完整的多边形边框
-                        for i in range(len(scaled_points)):
-                            painter.drawLine(scaled_points[i], scaled_points[(i + 1) % len(scaled_points)])
-                    
-                    # 绘制控制点
-                    painter.setPen(QPen(Qt.yellow, 1, Qt.SolidLine))
-                    painter.setBrush(Qt.yellow)
-                    for scaled_point in scaled_points:
-                        painter.drawEllipse(scaled_point, 6, 6)
-
-        # ========== 绘制多边形 ==========
-        # 绘制已完成的多边形
-        for poly_index, polygon in enumerate(self.polygons):
-            if len(polygon.points) > 1:
-                # 根据多边形是否被选中设置不同的颜色
-                if poly_index == self.selected_polygon_index:
-                    painter.setPen(QPen(Qt.green, 3, Qt.SolidLine))  # 选中时用绿色粗线，与矩形保持一致
-                elif poly_index in self.highlighted_polygons:
-                    # 高亮多边形用黄色粗线绘制
-                    painter.setPen(QPen(Qt.yellow, 3, Qt.SolidLine))
-                else:
-                    painter.setPen(QPen(Qt.red, 2, Qt.SolidLine))  # 红色实线
-
-                # 绘制点之间的连接线（缩放后）
-                scaled_points = []
-                for point in polygon.points:
-                    scaled_points.append(QPoint(
-                        int(point.x() * self.scale_factor),
-                        int(point.y() * self.scale_factor)
-                    ))
-                
-                if not polygon.closed:
-                    for i in range(len(scaled_points) - 1):
-                        painter.drawLine(scaled_points[i], scaled_points[i + 1])
-                else:
-                    # 如果多边形已经闭合，绘制完整的多边形边框
-                    for i in range(len(scaled_points)):
-                        painter.drawLine(scaled_points[i], scaled_points[(i + 1) % len(scaled_points)])
-                
-                # 如果多边形被选中，绘制控制点（所有顶点用绿色圆形点绘制）
-                if poly_index == self.selected_polygon_index:
-                    painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
-                    painter.setBrush(Qt.green)
-                    for scaled_point in scaled_points:
-                        painter.drawEllipse(scaled_point, 6, 6)  # 绘制半径为6的圆形点
-
-            # 绘制多边形的所有点
-            for point_index, point in enumerate(polygon.points):
-                # 创建缩放后的点
-                scaled_point = QPoint(
-                    int(point.x() * self.scale_factor),
-                    int(point.y() * self.scale_factor)
-                )
-                
-                # 检查是否选中了点
-                if (self.selected_point_info is not None and
-                        self.selected_point_info[0] == poly_index and
-                        self.selected_point_info[1] == point_index):
-                    # 选中的点用绿色圆形点绘制（更大更明显）
-                    painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
-                    painter.setBrush(Qt.green)
-                    painter.drawEllipse(scaled_point, 8, 8)  # 绘制半径为8的圆形点
-                # 如果整个多边形被选中，则所有点都用绿色绘制
-                elif poly_index == self.selected_polygon_index:
-                    painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
-                    painter.setBrush(Qt.green)
-                    painter.drawEllipse(scaled_point, 5, 5)  # 绘制半径为5的圆形点
-                elif poly_index in self.highlighted_polygons:
-                    # 高亮多边形的点用黄色绘制
-                    painter.setPen(QPen(Qt.yellow, 1, Qt.SolidLine))
-                    painter.setBrush(Qt.yellow)
-                    painter.drawEllipse(scaled_point, 5, 5)  # 绘制半径为5的圆形点
-                elif point_index == 0:
-                    # 起始点用较大红色圆形点绘制
-                    painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
-                    painter.setBrush(Qt.red)
-                    painter.drawEllipse(scaled_point, 6, 6)  # 绘制半径为6的圆形点
-                else:
-                    # 其他点用普通红色圆形点绘制
-                    painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
-                    painter.setBrush(Qt.red)
-                    painter.drawEllipse(scaled_point, 5, 5)  # 绘制半径为5的圆形点
-
-                # 如果是起始点且点数大于等于3且未闭合，绘制一个圆圈提示可以点击闭合
-                if (point_index == 0 and len(polygon.points) >= 3 and not polygon.closed):
-                    painter.setPen(QPen(Qt.green, 2, Qt.SolidLine))  # 改为绿色
-                    painter.setBrush(Qt.NoBrush)  # 不填充
-                    painter.drawEllipse(scaled_point, 12, 12)  # 绘制半径为12的圆形提示框
-
-            # 绘制多边形的标签
-            if polygon.label and len(polygon.points) > 0:
-                # 计算多边形的中心点（缩放后）
-                scaled_points = []
-                for point in polygon.points:
-                    scaled_points.append(QPoint(
-                        int(point.x() * self.scale_factor),
-                        int(point.y() * self.scale_factor)
-                    ))
-                    
-                center_x = sum(point.x() for point in scaled_points) / len(scaled_points)
-                center_y = sum(point.y() for point in scaled_points) / len(scaled_points)
-                
-                # 设置文本颜色
-                if poly_index == self.selected_polygon_index:
-                    painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
-                elif poly_index in self.highlighted_polygons:
-                    # 高亮多边形标签用黄色
-                    painter.setPen(QPen(Qt.yellow, 1, Qt.SolidLine))
-                else:
-                    painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
-                # 绘制标签文本
-                font = QFont()
-                font.setPointSize(14)  # 增大字体
-                painter.setFont(font)
-                painter.drawText(int(center_x), int(center_y), polygon.label)
 
         # 绘制当前正在绘制的多边形
         current_polygon = self.current_polygon
         if len(current_polygon.points) > 1:
-            # 根据当前多边形是否被选中设置不同的颜色
-            if self.selected_polygon_index == -1:  # -1表示当前多边形
-                painter.setPen(QPen(Qt.green, 3, Qt.SolidLine))  # 选中时用绿色粗线，与矩形保持一致
-            else:
-                painter.setPen(QPen(Qt.red, 2, Qt.SolidLine))  # 红色实线
+            painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
 
             # 绘制点之间的连接线（缩放后）
             scaled_points = []
@@ -1301,7 +999,7 @@ class ImageLabel(QLabel):
                     int(point.x() * self.scale_factor),
                     int(point.y() * self.scale_factor)
                 ))
-            
+
             if not current_polygon.closed:
                 for i in range(len(scaled_points) - 1):
                     painter.drawLine(scaled_points[i], scaled_points[i + 1])
@@ -1309,13 +1007,7 @@ class ImageLabel(QLabel):
                 # 如果多边形已经闭合，绘制完整的多边形边框
                 for i in range(len(scaled_points)):
                     painter.drawLine(scaled_points[i], scaled_points[(i + 1) % len(scaled_points)])
-            
-            # 如果当前多边形被选中，绘制控制点（所有顶点用绿色圆形点绘制）
-            if self.selected_polygon_index == -1:  # -1表示当前多边形
-                painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
-                painter.setBrush(Qt.green)
-                for scaled_point in scaled_points:
-                    painter.drawEllipse(scaled_point, 6, 6)  # 绘制半径为6的圆形点
+
         elif len(current_polygon.points) == 1:
             # 如果只有一个点，也要显示点
             if current_polygon.points:
@@ -1325,45 +1017,41 @@ class ImageLabel(QLabel):
                 )
                 painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
                 painter.setBrush(Qt.red)
-                painter.drawEllipse(scaled_point, 5, 5)
+                painter.drawEllipse(scaled_point, 3, 3)
 
         # 绘制当前多边形的所有点
-        for point_index, point in enumerate(current_polygon.points):
-            # 创建缩放后的点
-            scaled_point = QPoint(
-                int(point.x() * self.scale_factor),
-                int(point.y() * self.scale_factor)
-            )
-            
-            # 检查是否选中了点 (仅在多边形闭合后)
-            if (self.current_polygon.closed and self.selected_point_info is not None and
-                    self.selected_point_info[0] == -1 and  # -1表示当前多边形
-                    self.selected_point_info[1] == point_index):
-                # 选中的点用绿色圆形点绘制（更大更明显）
-                painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
-                painter.setBrush(Qt.green)
-                painter.drawEllipse(scaled_point, 8, 8)  # 绘制半径为8的圆形点
-            # 如果整个多边形被选中，则所有点都用绿色绘制
-            elif self.selected_polygon_index == -1:
-                painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
-                painter.setBrush(Qt.green)
-                painter.drawEllipse(scaled_point, 5, 5)  # 绘制半径为5的圆形点
-            elif point_index == 0:
-                # 起始点用较大红色圆形点绘制
-                painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
-                painter.setBrush(Qt.red)
-                painter.drawEllipse(scaled_point, 6, 6)  # 绘制半径为6的圆形点
-            else:
-                # 其他点用普通红色圆形点绘制
-                painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
-                painter.setBrush(Qt.red)
-                painter.drawEllipse(scaled_point, 5, 5)  # 绘制半径为5的圆形点
+        # 只有在特殊情况下才绘制点（如正在绘制、选中点等）
+        if self.annotation_mode and self.mode == 'polygon':
+            for point_index, point in enumerate(current_polygon.points):
+                # 创建缩放后的点
+                scaled_point = QPoint(
+                    int(point.x() * self.scale_factor),
+                    int(point.y() * self.scale_factor)
+                )
 
-            # 如果是起始点且点数大于等于3且未闭合，绘制一个圆圈提示可以点击闭合
-            if (point_index == 0 and len(current_polygon.points) >= 3 and not current_polygon.closed):
-                painter.setPen(QPen(Qt.green, 2, Qt.SolidLine))  # 改为绿色
-                painter.setBrush(Qt.NoBrush)  # 不填充
-                painter.drawEllipse(scaled_point, 12, 12)  # 绘制半径为12的圆形提示框
+                # 检查是否选中了点 (仅在多边形闭合后)
+                if (current_polygon.closed and self.selected_point_info is not None and
+                        self.selected_point_info[0] == -1 and  # -1表示当前多边形
+                        self.selected_point_info[1] == point_index):
+                    # 选中的点用绿色圆形点绘制（更大更明显）
+                    painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
+                    painter.setBrush(Qt.green)
+                    painter.drawEllipse(scaled_point, 8, 8)  # 绘制半径为8的圆形点
+                elif point_index == 0:
+                    # 起始点用较大红色圆形点绘制
+                    painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
+                    painter.setBrush(Qt.red)
+                    painter.drawEllipse(scaled_point, 6, 6)  # 绘制半径为6的圆形点
+                    # 如果是起始点且点数大于等于3且未闭合，绘制一个圆圈提示可以点击闭合
+                    if len(current_polygon.points) >= 3 and not current_polygon.closed:
+                        painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))  # 改为绿色
+                        painter.setBrush(Qt.NoBrush)  # 不填充
+                        painter.drawEllipse(scaled_point, 12, 12)  # 绘制半径为12的圆形提示框
+                else:
+                    # 其他点用普通红色圆形点绘制
+                    painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
+                    painter.setBrush(Qt.red)
+                    painter.drawEllipse(scaled_point, 5, 5)  # 绘制半径为5的圆形点
 
         # 绘制当前多边形的标签
         if current_polygon.label and len(current_polygon.points) > 0:
@@ -1374,19 +1062,43 @@ class ImageLabel(QLabel):
                     int(point.x() * self.scale_factor),
                     int(point.y() * self.scale_factor)
                 ))
-                
+
             center_x = sum(point.x() for point in scaled_points) / len(scaled_points)
             center_y = sum(point.y() for point in scaled_points) / len(scaled_points)
-            
+
             # 设置文本颜色
-            if self.selected_polygon_index == -1:  # -1表示当前多边形
-                painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
-            else:
-                painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
+            painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
             # 绘制标签文本
             font = QFont()
             font.setPointSize(14)  # 增大字体
             painter.setFont(font)
             painter.drawText(int(center_x), int(center_y), current_polygon.label)
-        
+
         painter.end()
+
+    def set_mode(self, mode):
+        """设置标注模式
+
+        Args:
+            mode (str): 标注模式，'rectangle' 或 'polygon'
+        """
+        if mode in ['rectangle', 'polygon']:
+            self.mode = mode
+            self.update()
+        else:
+            raise ValueError(f"Unsupported mode: {mode}. Use 'rectangle' or 'polygon'.")
+
+    def start_annotation_mode(self):
+        """启动标注模式"""
+        self.annotation_mode = True
+        self.setCursor(Qt.CrossCursor)  # 更改鼠标样式为十字
+        self.update()
+
+    def exit_annotation_mode(self):
+        """退出标注模式"""
+        self.annotation_mode = False
+        self.drawing = False
+        self.current_rectangle = None
+        self.current_polygon = PolygonData()
+        self.setCursor(Qt.ArrowCursor)  # 恢复默认鼠标样式
+        self.update()

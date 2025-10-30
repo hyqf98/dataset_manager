@@ -113,14 +113,10 @@ class MainWindow(QMainWindow):
             self.preview_panel.annotations_updated.connect(self.details_panel.update_details)
 
             # 连接详情面板的信号到预览面板
-            self.details_panel.rectangle_selected.connect(self.preview_panel.select_rectangle)
-            self.details_panel.rectangles_highlighted.connect(self.preview_panel.highlight_rectangles)
             self.details_panel.tag_selected.connect(self.preview_panel.highlight_annotations_by_labels)
             self.details_panel.annotation_deleted.connect(self.preview_panel.delete_annotation)
-            self.details_panel.polygon_selected.connect(self.preview_panel.select_polygon)
-            self.details_panel.polygons_highlighted.connect(self.preview_panel.highlight_polygons)
-            self.details_panel.polygon_indices_highlighted.connect(self.preview_panel.highlight_polygon_indices)
             self.details_panel.annotation_selected.connect(self.preview_panel.select_annotation)
+            self.details_panel.annotation_deselected.connect(self.preview_panel.clear_annotation_selection)
 
             # 连接预览面板的图片上选中标注信号到详情面板
             self.preview_panel.annotation_selected_in_image.connect(self.details_panel.select_annotation_in_image)
@@ -259,6 +255,10 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"窗口显示事件处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+
+
+
 
 
 
