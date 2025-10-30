@@ -64,7 +64,8 @@ class RectangleAnnotation(Annotation):
         if self.selected:
             painter.setPen(QPen(Qt.green, 3, Qt.SolidLine))
         elif self.highlighted:
-            painter.setPen(QPen(Qt.yellow, 3, Qt.SolidLine))
+            # 批量选中时使用绿色高亮，线宽与选中状态一致
+            painter.setPen(QPen(Qt.green, 3, Qt.SolidLine))
         else:
             painter.setPen(QPen(Qt.red, 2, Qt.SolidLine))
 
@@ -113,7 +114,7 @@ class PolygonAnnotation(Annotation):
         """检查点是否在多边形内部或接近多边形的顶点"""
         if len(self.points) < 1:
             return False
-            
+
         # 如果多边形已闭合且点数大于等于3，检查点是否在多边形内部
         if self.closed and len(self.points) >= 3:
             polygon = QPolygon()
@@ -143,11 +144,12 @@ class PolygonAnnotation(Annotation):
 
         # 根据状态设置画笔
         if self.selected:
-            painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
+            painter.setPen(QPen(Qt.green, 3, Qt.SolidLine))
         elif self.highlighted:
-            painter.setPen(QPen(Qt.yellow, 1, Qt.SolidLine))
+            # 批量选中时使用绿色高亮，线宽与选中状态一致
+            painter.setPen(QPen(Qt.green, 3, Qt.SolidLine))
         else:
-            painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
+            painter.setPen(QPen(Qt.red, 2, Qt.SolidLine))
 
         # 绘制点之间的连接线（缩放后）
         scaled_points = []
@@ -171,10 +173,10 @@ class PolygonAnnotation(Annotation):
             painter.setBrush(Qt.green)
             for point_index, scaled_point in enumerate(scaled_points):
                 # 检查是否是选中的控制点
-                is_selected_control_point = (selected_control_point is not None and 
-                                           selected_control_point[0] == self and 
+                is_selected_control_point = (selected_control_point is not None and
+                                           selected_control_point[0] == self and
                                            selected_control_point[1] == point_index)
-                
+
                 if is_selected_control_point:
                     # 特殊高亮选中的控制点
                     painter.setPen(QPen(Qt.blue, 2, Qt.SolidLine))  # 蓝色边框
@@ -207,7 +209,8 @@ class PolygonAnnotation(Annotation):
             if self.selected:
                 painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
             elif self.highlighted:
-                painter.setPen(QPen(Qt.yellow, 1, Qt.SolidLine))
+                # 批量选中时使用绿色高亮
+                painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
             else:
                 painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
             # 绘制标签文本
@@ -413,33 +416,33 @@ class ImageLabel(QLabel):
         # 如果选中了多边形的控制点，则删除该控制点
         if self.selected_control_point is not None:
             annotation, point_index = self.selected_control_point
-            
+
             # 删除选中的控制点
             del annotation.points[point_index]
-            
+
             # 取消多边形的闭合状态
             annotation.closed = False
-            
+
             # 清除选中的控制点
             self.selected_control_point = None
-            
+
             # 如果删除点后点数少于3个，则清除标签
             if len(annotation.points) < 3:
                 annotation.label = ""
-            
+
             # 启动绘制多边形的操作
             self.current_polygon = PolygonData()
             self.current_polygon.points = annotation.points[:]
             self.current_polygon.label = annotation.label
-            
+
             # 从annotations中移除该多边形
             if annotation in self.annotations:
                 self.annotations.remove(annotation)
-            
+
             # 启动标注模式以继续编辑未闭合的多边形
             self.start_annotation_mode()
             self.mode = 'polygon'
-            
+
             self.update()
         elif self.selected_annotation:
             # 如果选中了注解，则删除注解
@@ -465,7 +468,7 @@ class ImageLabel(QLabel):
             annotation_data: 注解数据字典，包含type和其他相关信息
         """
         annotation_to_delete = None
-        
+
         if annotation_data['type'] == 'rectangle':
             # 查找匹配的矩形注解
             for annotation in self.annotations:
@@ -489,23 +492,23 @@ class ImageLabel(QLabel):
             if self.selected_annotation == annotation_to_delete:
                 self.selected_annotation = None
                 self.selected_control_point = None
-                
+
             # 从annotations列表中移除
             self.annotations.remove(annotation_to_delete)
-            
+
             # 如果删除的注解在高亮列表中，也需要从高亮列表中移除
             if annotation_to_delete in self.highlighted_annotations:
                 self.highlighted_annotations.remove(annotation_to_delete)
-            
+
             # 更新显示
             self.update()
             # 保存YOLO标注
             self.save_yolo_annotations()
             # 发出标注更新信号
             self.annotations_updated.emit(self)
-            
+
             return True
-            
+
         return False
 
     def edit_annotation_label(self, annotation):
@@ -612,6 +615,13 @@ class ImageLabel(QLabel):
         # 更新界面
         self.update()
 
+    def deselect_details_panel(self):
+        """
+        通知详情面板取消选中状态
+        """
+        # 发送None来通知详情面板取消所有选中状态
+        self.annotation_selected_in_image.emit(None)
+
     def select_annotation(self, annotation):
         """
         选中指定的注解（可编辑状态）
@@ -627,24 +637,20 @@ class ImageLabel(QLabel):
             self.clear_highlights()
             # 发出信号，通知详情面板也选中对应的条目
             self.annotation_selected_in_image.emit(annotation)
-        else:
-            # 如果选中的注解没有变化，避免重复发送信号
-            logger.debug("图片标注组件选中注解: %s (已选中，跳过信号发送)",
-                        type(annotation).__name__ if annotation else "None")
 
     def show_control_points(self, annotation):
         """
         统一方法用于在选中注解时显示控制点
-        
+
         Args:
             annotation: 要显示控制点的注解对象
         """
         if annotation is None:
             return
-            
+
         # 设置选中状态
         annotation.selected = True
-        
+
         # 根据注解类型显示相应的控制点
         if isinstance(annotation, RectangleAnnotation):
             # 矩形显示四个角点
@@ -652,7 +658,7 @@ class ImageLabel(QLabel):
         elif isinstance(annotation, PolygonAnnotation):
             # 多边形显示所有顶点
             pass  # 多边形的控制点在draw方法中处理
-        
+
         self.update()
 
     def select_annotation_by_data(self, annotation_data):
@@ -664,6 +670,8 @@ class ImageLabel(QLabel):
         """
         # 处理取消选中的情况
         if annotation_data is None:
+            # 通知详情面板取消选中状态
+            self.deselect_details_panel()
             self.clear_selection()
             return
 
@@ -683,21 +691,10 @@ class ImageLabel(QLabel):
                     annotation.label == annotation_data['label']):
                     self.select_annotation(annotation)
                     return
-        logger.debug("未找到匹配的注解进行选中: %s", annotation_data)
-
-    def highlight_annotations(self, annotations):
-        """
-        高亮指定的注解列表（仅高亮，不可编辑）
-
-        Args:
-            annotations: 要高亮的注解列表
-        """
-        self.highlighted_annotations = annotations
-        # 清除选中状态
-        self.clear_highlights()
-        self.selected_annotation = None
-        self.selected_point_info = None
-        self.update()
+        else:
+            # 如果没有找到匹配的注解，通知详情面板取消选中状态
+            self.deselect_details_panel()
+            self.clear_selection()
 
     def highlight_annotations_by_data(self, annotations_data):
         """
@@ -708,7 +705,7 @@ class ImageLabel(QLabel):
         """
         # 查找匹配的注解对象
         matched_annotations = []
-        
+
         for annotation_data in annotations_data:
             if annotation_data['type'] == 'rectangle':
                 # 查找匹配的矩形注解
@@ -726,9 +723,10 @@ class ImageLabel(QLabel):
                         annotation.label == annotation_data['label']):
                         matched_annotations.append(annotation)
                         break
-                        
+
         # 高亮显示匹配的注解
-        self.highlight_annotations(matched_annotations)
+        self.highlighted_annotations = matched_annotations
+        self.update()
 
     def highlight_annotations_by_labels(self, labels):
         """
@@ -737,13 +735,32 @@ class ImageLabel(QLabel):
         Args:
             labels: 要高亮的标签列表
         """
-        # 查找匹配标签的注解
-        matched_annotations = []
+        logger.debug(f"根据标签高亮注解: {labels}")
+        # 查找匹配标签的注解数据
+        matched_annotations_data = []
         for annotation in self.annotations:
             if annotation.label in labels:
-                matched_annotations.append(annotation)
+                # 构建注解数据
+                if isinstance(annotation, RectangleAnnotation):
+                    annotation_data = {
+                        'type': 'rectangle',
+                        'rectangle': annotation.rectangle,
+                        'label': annotation.label
+                    }
+                    matched_annotations_data.append(annotation_data)
+                    logger.debug(f"找到矩形注解: 标签={annotation.label}")
+                elif isinstance(annotation, PolygonAnnotation):
+                    annotation_data = {
+                        'type': 'polygon',
+                        'points': annotation.points,
+                        'label': annotation.label
+                    }
+                    matched_annotations_data.append(annotation_data)
+                    logger.debug(f"找到多边形注解: 标签={annotation.label}, 点数={len(annotation.points)}")
 
-        self.highlight_annotations(matched_annotations)
+        logger.debug(f"总共找到 {len(matched_annotations_data)} 个注解")
+        # 调用highlight_annotations_by_data方法来处理高亮
+        self.highlight_annotations_by_data(matched_annotations_data)
 
     def clear_highlights(self, data_to_clear=None):
         """
@@ -844,7 +861,7 @@ class ImageLabel(QLabel):
                         self.resize_rectangle_start_rect = QRect(self.selected_annotation.rectangle)
                         self.update()
                         return
-                
+
                 # 检查是否点击了多边形的控制点
                 elif isinstance(self.selected_annotation, PolygonAnnotation):
                     threshold = 10
@@ -932,13 +949,12 @@ class ImageLabel(QLabel):
                     self.update()
                     return
 
-            # 如果执行到这里，说明点击的是空白区域，需要清除选中状态
-            # 但仅当没有选中控制点时才清除选中状态
-            if (self.selected_annotation is not None or self.selected_point_info is not None) and self.selected_control_point is None:
-                self.clear_selection()
             # 只有在点击空白区域时才清除高亮状态
             if not annotation_clicked:
-                self.clear_highlights()
+                # 通知详情面板取消选中状态
+                self.deselect_details_panel()
+                # 清除选中状态
+                self.clear_selection()
 
     def mouseMoveEvent(self, event):
         # 更新鼠标位置
@@ -991,7 +1007,7 @@ class ImageLabel(QLabel):
         elif self.resizing and self.selected_annotation and isinstance(self.selected_annotation, PolygonAnnotation) and self.selected_control_point:
             # 计算鼠标移动的距离
             offset = event.pos() - self.drag_start_position
-            
+
             # 调整选中控制点的位置
             annotation, point_index = self.selected_control_point
             if 0 <= point_index < len(annotation.points):
@@ -1001,7 +1017,7 @@ class ImageLabel(QLabel):
         elif self.resizing and self.selected_annotation and isinstance(self.selected_annotation, PolygonAnnotation) and self.selected_point_info:
             # 计算鼠标移动的距离
             offset = event.pos() - self.drag_start_position
-            
+
             # 调整选中点的位置
             poly_index, point_index = self.selected_point_info
             if poly_index >= 0 and poly_index < len(self.annotations):
@@ -1116,14 +1132,6 @@ class ImageLabel(QLabel):
         )
         painter.drawPixmap(0, 0, scaled_pixmap)
 
-        # 绘制高亮注解
-        for annotation in self.highlighted_annotations:
-            # 临时设置高亮状态
-            original_highlighted = annotation.highlighted
-            annotation.highlighted = True
-            annotation.draw(painter, self.scale_factor)
-            annotation.highlighted = original_highlighted
-
         # 绘制所有已完成的注解
         for annotation in self.annotations:
             # 临时设置选中状态
@@ -1131,12 +1139,21 @@ class ImageLabel(QLabel):
             # 如果是当前选中的注解或者有选中的控制点属于该注解，则设置为选中状态
             annotation.selected = (annotation == self.selected_annotation) or \
                                 (self.selected_control_point is not None and self.selected_control_point[0] == annotation)
+
+            # 检查是否在高亮列表中
+            original_highlighted = annotation.highlighted
+            if annotation in self.highlighted_annotations:
+                annotation.highlighted = True
+
             # 传递选中的控制点信息给draw方法（仅对PolygonAnnotation）
             if isinstance(annotation, PolygonAnnotation):
                 annotation.draw(painter, self.scale_factor, self.selected_control_point)
             else:
                 annotation.draw(painter, self.scale_factor)
+
+            # 恢复原始状态
             annotation.selected = original_selected
+            annotation.highlighted = original_highlighted
 
         # 绘制当前正在绘制的矩形框
         if self.current_rectangle:

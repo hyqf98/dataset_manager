@@ -464,22 +464,11 @@ class PreviewPanel(QWidget):
         """
         pass
 
-    def highlight_annotations_by_labels(self, labels):
+    def highlight_annotations_by_labels(self):
         """
         根据标签高亮所有相关的标注（包括矩形和多边形）
-
-        Args:
-            labels: 要高亮的标签列表
         """
-        if isinstance(self.scroll_area.widget(), ImageLabel):
-            image_label = self.scroll_area.widget()
-            if labels:
-                image_label.highlight_annotations_by_labels(labels)
-            else:
-                # 如果标签列表为空，清除所有高亮
-                image_label.highlighted_rectangles = []
-                image_label.highlighted_polygons = []
-                image_label.update()
+        pass
 
     def clear_highlights(self):
         """
@@ -487,9 +476,7 @@ class PreviewPanel(QWidget):
         """
         if isinstance(self.scroll_area.widget(), ImageLabel):
             image_label = self.scroll_area.widget()
-            image_label.highlighted_rectangles = []
-            image_label.highlighted_polygons = []
-            image_label.update()
+            image_label.clear_highlights()
 
     def clear_highlights_from_details(self, data_to_clear):
         """
@@ -500,11 +487,7 @@ class PreviewPanel(QWidget):
         """
         if isinstance(self.scroll_area.widget(), ImageLabel):
             image_label = self.scroll_area.widget()
-
-            # 清除所有高亮状态
-            image_label.highlighted_rectangles = []
-            image_label.highlighted_polygons = []
-            image_label.update()
+            image_label.clear_highlights(data_to_clear)
 
     def update_image_display(self):
         """
