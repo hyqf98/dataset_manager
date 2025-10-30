@@ -386,22 +386,19 @@ class ImageDetailsPanel(QWidget):
             # 如果选中了多个项目，则高亮显示所有选中的标注框
             else:
                 # 收集所有选中的标注数据
-                selected_annotations = []
+                selected_annotations_data = []
                 for item in selected_items:
                     row = self.annotations_list.row(item)
                     if 0 <= row < len(self.annotations_data):
-                        selected_annotations.append(self.annotations_data[row])
+                        selected_annotations_data.append(self.annotations_data[row])
 
                 # 如果有ImageLabel实例，使用其高亮方法
-                if self.image_label and hasattr(self.image_label, 'highlight_annotations_by_labels'):
-                    labels = list(set(anno.get('label') for anno in selected_annotations if anno.get('label')))
-                    self.image_label.highlight_annotations_by_labels(labels)
+                if self.image_label and hasattr(self.image_label, 'highlight_annotations_by_data'):
+                    self.image_label.highlight_annotations_by_data(selected_annotations_data)
         else:
             # 如果没有选中的标注，清除高亮
-            if self.image_label and hasattr(self.image_label, 'clear_highlights'):
+            if self.image_label:
                 self.image_label.clear_highlights()
-            # 同时通知图片标注窗口取消选中状态
-            self.annotation_deselected.emit()
 
     def on_tags_item_selection_changed(self):
         """

@@ -261,10 +261,19 @@ class PreviewPanel(QWidget):
                     self.delete_current_image()
             # 处理W键开启标注模式
             elif event.key() == Qt.Key_W:
-                image_label.start_annotation_mode()
+                # 弹出输入框让用户输入标注内容（支持多个标签）
+                from PyQt5.QtWidgets import QInputDialog
+                label, ok = QInputDialog.getText(self, '标注内容设置', '请输入标注内容(多个标签用逗号分隔):')
+                if ok and label:
+                    # 设置当前标注内容
+                    image_label.current_annotation_label = label
+                    # 启动标注模式
+                    image_label.start_annotation_mode()
             # 处理Q键退出标注模式
             elif event.key() == Qt.Key_Q:
                 image_label.exit_annotation_mode()
+                # 清除当前标注内容
+                image_label.current_annotation_label = ""
             # 处理A/D键切换前后资源
             elif event.key() == Qt.Key_A:
                 self.switch_to_previous_resource()
@@ -400,13 +409,14 @@ class PreviewPanel(QWidget):
 
     def select_annotation(self, annotation_data):
         """
-        选中指定的注解（可编辑状态）
+        选中指定的标注
 
         Args:
-            annotation_data: 要选中的注解数据
+            annotation_data: 标注数据
         """
         if isinstance(self.scroll_area.widget(), ImageLabel):
             image_label = self.scroll_area.widget()
+            # 使用ImageLabel内部的方法根据数据选中注解
             image_label.select_annotation_by_data(annotation_data)
 
     def select_rectangle(self, rectangle):
@@ -523,40 +533,8 @@ class PreviewPanel(QWidget):
         """
         if isinstance(self.scroll_area.widget(), ImageLabel):
             image_label = self.scroll_area.widget()
-            # 查找并删除对应的标注
-            if annotation['type'] == 'rectangle':
-                # 查找匹配的矩形框
-                for rect_info in image_label.rectangle_infos:
-                    if rect_info.rectangle == annotation['rectangle'] and rect_info.label == annotation['label']:
-                        # 如果删除的是当前选中的矩形框，清除选中状态
-                        if image_label.selected_rectangle_info == rect_info:
-                            image_label.selected_rectangle_info = None
-                        image_label.rectangle_infos.remove(rect_info)
-                        break
-                # 如果删除的矩形框在高亮列表中，也需要从高亮列表中移除
-                for rect in image_label.highlighted_rectangles:
-                    if rect == annotation['rectangle']:
-                        image_label.highlighted_rectangles.remove(rect)
-                        break
-            elif annotation['type'] == 'polygon':
-                # 查找匹配的多边形
-                for i, polygon in enumerate(image_label.polygons):
-                    if polygon.points == annotation['points'] and polygon.label == annotation['label']:
-                        # 如果删除的是当前选中的多边形，清除选中状态
-                        if image_label.selected_polygon_index == i:
-                            image_label.selected_polygon_index = None
-                        del image_label.polygons[i]
-                        break
-                # 如果删除的多边形在高亮列表中，也需要从高亮列表中移除
-                if i in image_label.highlighted_polygons:
-                    image_label.highlighted_polygons.remove(i)
-                    # 更新后续索引
-                    image_label.highlighted_polygons = [idx-1 if idx > i else idx for idx in image_label.highlighted_polygons]
-
-            # 更新显示
-            image_label.update()
-            # 保存YOLO标注
-            image_label.save_yolo_annotations()
+            # 使用ImageLabel内部的方法根据数据删除注解
+            image_label.delete_annotation_by_data(annotation)
             # 发出标注更新信号
             self.annotations_updated.emit(self.current_file_path, image_label)
 
