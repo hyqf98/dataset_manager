@@ -1,21 +1,19 @@
-import sys
-from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QSplitter, QMessageBox, QApplication, QDialog
-from PyQt5.QtCore import Qt, QRect, QEvent
-from PyQt5.QtGui import QKeyEvent
-from ..file_manager.panel import FileManagerPanel
-from ..preview.panel import PreviewPanel
-from ..ui.details_panel import DetailsPanel
-from ..logging_config import logger
 import os
 import traceback
+
+from PyQt5.QtCore import Qt, QEvent
+from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QSplitter, QMessageBox, QApplication, QDialog
+
+from ..file_manager.file_manager_panel import FileManagerPanel
+from ..logging_config import logger
+from ..preview.preview_panel import PreviewPanel
 
 
 class MainWindow(QMainWindow):
     """
-    主窗口类，负责创建应用程序的三栏布局
-    左侧：文件管理面板
-    中间：预览面板
-    右侧：详情面板
+    主窗口类，负责创建应用程序的两栏布局
+    左侧：文件管理面板（占1/3宽度）
+    右侧：预览面板（占2/3宽度）
     """
 
     def __init__(self):
@@ -58,29 +56,26 @@ class MainWindow(QMainWindow):
             central_widget = QWidget()
             self.setCentralWidget(central_widget)
 
-            # 创建三个主要面板
+            # 创建文件管理面板和预览面板
             self.file_manager_panel = FileManagerPanel()
             self.preview_panel = PreviewPanel()
-            self.details_panel = DetailsPanel()
 
             # 连接文件管理器和预览面板
             self.setup_connections()
 
-            # 创建分割器实现三栏布局，调整比例为2:6:2
+            # 创建分割器实现两栏布局，调整比例为1:2
             splitter = QSplitter(Qt.Horizontal)
 
-            # 添加三个面板到分割器
+            # 添加面板到分割器
             splitter.addWidget(self.file_manager_panel)
             splitter.addWidget(self.preview_panel)
-            splitter.addWidget(self.details_panel)
 
-            # 设置各面板的初始大小比例为2:6:2
+            # 设置各面板的初始大小比例为1:2
             # 通过设置合适的初始尺寸来实现比例分配
             total_width = window_width - 20  # 窗口宽度减去一些边距
-            left_width = int(total_width * 0.2)    # 20%宽度给左侧
-            center_width = int(total_width * 0.6)  # 60%宽度给中间
-            right_width = int(total_width * 0.2)   # 20%宽度给右侧
-            splitter.setSizes([left_width, center_width, right_width])
+            left_width = int(total_width * 0.10)    # 20%宽度给左侧文件管理面板
+            right_width = int(total_width * 0.90)   # 80%宽度给右侧预览面板
+            splitter.setSizes([left_width, right_width])
 
             # 创建主布局并添加分割器
             main_layout = QHBoxLayout(central_widget)
@@ -108,18 +103,6 @@ class MainWindow(QMainWindow):
 
             # 连接文件管理器的文件删除信号到预览面板清空
             self.file_manager_panel.events.file_deleted.connect(self.on_file_manager_file_deleted)
-
-            # 连接预览面板的标注更新信号到详情面板
-            self.preview_panel.annotations_updated.connect(self.details_panel.update_details)
-
-            # 连接详情面板的信号到预览面板
-            self.details_panel.tag_selected.connect(self.preview_panel.highlight_annotations_by_labels)
-            self.details_panel.annotation_deleted.connect(self.preview_panel.delete_annotation)
-            self.details_panel.annotation_selected.connect(self.preview_panel.select_annotation)
-            self.details_panel.annotation_deselected.connect(self.preview_panel.clear_annotation_selection)
-
-            # 连接预览面板的图片上选中标注信号到详情面板
-            self.preview_panel.annotation_selected_in_image.connect(self.details_panel.select_annotation_in_image)
         except Exception as e:
             logger.error(f"设置信号与槽连接时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -178,16 +161,26 @@ class MainWindow(QMainWindow):
             logger.error(f"处理文件管理器文件删除事件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
 
-    def on_image_annotations_updated(self, file_path, image_label):
+    def on_annotations_updated(self, file_path, modified_annotation):
         """
-        处理图片标注更新事件，用于同步清除选中状态
+        处理标注更新事件
 
         Args:
             file_path (str): 文件路径
-            image_label (ImageLabel): 图片标注组件
+            modified_annotation (Annotation): 被修改的标注对象
         """
-        # 如果图片上没有选中的标注元素，且不是在拖动操作中，更新详情面板
-        pass
+        logger.debug(f"处理标注更新事件: {file_path}")
+        # 可以在这里添加其他处理逻辑
+
+    def on_annotation_selected_in_image(self, annotation):
+        """
+        处理图片上选中标注的事件
+
+        Args:
+            annotation: 被选中的标注对象(矩形或多边形)
+        """
+        logger.debug(f"处理图片上选中标注事件: {annotation}")
+        # 可以在这里添加其他处理逻辑
 
     def eventFilter(self, obj, event):
         """
@@ -255,12 +248,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"窗口显示事件处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
-
-
-
-
-
-
 
 
 
