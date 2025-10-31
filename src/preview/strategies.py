@@ -1,8 +1,4 @@
 from abc import ABC, abstractmethod
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QLabel, QSizePolicy
-from .img.image_preview_panel import ImageLabel
 from ..logging_config import logger
 import os
 

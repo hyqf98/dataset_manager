@@ -5,8 +5,8 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QWheelEvent
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea
 
-from .img.image_preview_panel import ImagePreviewPanel
-from .video.video_preview_panel import VideoPreviewPanel
+from src.preview.image_preview_panel import ImagePreviewPanel
+from src.preview.video_preview_panel import VideoPreviewPanel
 from ..logging_config import logger
 
 
@@ -50,13 +50,11 @@ class PreviewPanel(QWidget):
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scroll_area.setAlignment(Qt.AlignCenter)
 
-        # 创建标签用于显示内容
-        self.content_label = QLabel("请选择文件进行预览")
-        self.content_label.setAlignment(Qt.AlignCenter)
+        # 设置滚动区域的最小尺寸
+        self.scroll_area.setMinimumWidth(600)
+        self.scroll_area.setMinimumHeight(500)
 
-        self.scroll_area.setWidget(self.content_label)
         layout.addWidget(self.scroll_area)
-
         self.setLayout(layout)
 
     def preview_file(self, file_path):
@@ -132,7 +130,7 @@ class PreviewPanel(QWidget):
 
         # 替换显示内容为图片预览面板
         self.scroll_area.setWidget(image_preview_panel)
-        
+
         # 设置焦点到预览面板，确保能接收键盘事件
         image_preview_panel.setFocus()
 
@@ -157,7 +155,7 @@ class PreviewPanel(QWidget):
 
         # 替换显示内容为视频预览面板
         self.scroll_area.setWidget(video_preview_panel)
-        
+
         # 设置焦点到预览面板，确保能接收键盘事件
         video_preview_panel.setFocus()
 

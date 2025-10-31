@@ -32,8 +32,8 @@ def save_yolo_annotations(file_path, image_label, class_names):
     labels_dir = os.path.join(os.path.dirname(file_path), 'labels')
     os.makedirs(labels_dir, exist_ok=True)
     
-    # 生成类别名称文件
-    classes_file = os.path.join(os.path.dirname(file_path), 'classes.txt')
+    # 生成类别名称文件到labels目录中
+    classes_file = os.path.join(labels_dir, 'classes.txt')
     with open(classes_file, 'w', encoding='utf-8') as f:
         for class_name in class_names:
             f.write(f"{class_name}\n")
@@ -184,7 +184,7 @@ def _remove_annotation_files(file_path):
     base_name = os.path.splitext(os.path.basename(file_path))[0]
     labels_dir = os.path.join(os.path.dirname(file_path), 'labels')
     annotation_file = os.path.join(labels_dir, f"{base_name}.txt")
-    classes_file = os.path.join(os.path.dirname(file_path), 'classes.txt')
+    classes_file = os.path.join(labels_dir, 'classes.txt')
     
     # 删除标注文件
     if os.path.exists(annotation_file):
@@ -198,7 +198,7 @@ def _remove_annotation_files(file_path):
     has_other_annotations = False
     if os.path.exists(labels_dir):
         for file in os.listdir(labels_dir):
-            if file.endswith('.txt'):
+            if file.endswith('.txt') and file != 'classes.txt':
                 has_other_annotations = True
                 break
     

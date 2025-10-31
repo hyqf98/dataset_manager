@@ -34,14 +34,14 @@ class MainWindow(QMainWindow):
         初始化用户界面
         """
         try:
-            # 获取屏幕分辨率并设置窗口尺寸为屏幕的80%
+            # 获取屏幕分辨率并设置窗口尺寸为屏幕的95%
             screen = QApplication.primaryScreen()
             screen_geometry = screen.availableGeometry()
             screen_width = screen_geometry.width()
             screen_height = screen_geometry.height()
 
-            window_width = int(screen_width * 0.8)
-            window_height = int(screen_height * 0.8)
+            window_width = int(screen_width * 0.95)
+            window_height = int(screen_height * 0.95)
 
             # 设置窗口标题和尺寸，居中显示
             self.setWindowTitle('数据集管理器')
@@ -248,6 +248,10 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"窗口显示事件处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+
+
+
 
 
 

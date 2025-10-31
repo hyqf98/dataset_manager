@@ -6,7 +6,7 @@ from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtMultimediaWidgets import QGraphicsVideoItem
 from PyQt5.QtGui import QPixmap, QIcon
 import cv2
-from ...logging_config import logger
+from src.logging_config import logger
 
 
 class VideoPreviewPanel(QWidget):
