@@ -76,6 +76,46 @@ class ImagePreviewStrategy(PreviewStrategy):
         return ['.jpg', '.jpeg', '.png', '.bmp', '.gif']
 
 
+class TextPreviewStrategy(PreviewStrategy):
+    """
+    文本预览策略类
+    """
+
+    def preview(self, file_path, preview_panel):
+        """
+        预览文本文件
+
+        Args:
+            file_path (str): 文本文件路径
+            preview_panel: 预览面板实例
+        """
+        try:
+            # 检查文件是否存在
+            if not os.path.exists(file_path):
+                preview_panel.show_message(f"文件不存在: {file_path}")
+                logger.warning(f"尝试预览不存在的文本文件: {file_path}")
+                return False
+
+            # 显示文本预览
+            result = preview_panel.show_text_preview(file_path)
+
+            logger.info(f"文本文件已加载: {os.path.basename(file_path)}")
+            return result
+        except Exception as e:
+            preview_panel.show_message(f"加载文本文件出错: {str(e)}")
+            logger.error(f"加载文本文件出错: {str(e)}", exc_info=True)
+            return False
+
+    def supported_formats(self):
+        """
+        返回支持的文本格式列表
+
+        Returns:
+            list: 支持的文本文件扩展名列表
+        """
+        return ['.txt', '.json', '.xml']
+
+
 class UnsupportedPreviewStrategy(PreviewStrategy):
     """
     不支持的文件格式预览策略类
@@ -101,5 +141,3 @@ class UnsupportedPreviewStrategy(PreviewStrategy):
             list: 空列表
         """
         return []
-
-

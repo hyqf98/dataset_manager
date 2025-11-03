@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea
 
 from src.preview.image_preview_panel import ImagePreviewPanel
 from src.preview.video_preview_panel import VideoPreviewPanel
+from src.preview.text_preview_panel import TextPreviewPanel
 from ..logging_config import logger
 
 
@@ -28,11 +29,15 @@ class PreviewPanel(QWidget):
         super().__init__()
         self.init_ui()
         self.current_file_path = None  # 保存当前文件路径
+        self.current_preview_panel = None  # 当前预览面板
+        self.content_label = None  # 内容显示标签
 
         # 支持的图片格式
         self.supported_image_formats = ['.jpg', '.jpeg', '.png', '.bmp', '.gif']
         # 支持的视频格式
         self.supported_video_formats = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv']
+        # 支持的文本格式
+        self.supported_text_formats = ['.txt', '.json', '.xml']
 
         # 设置焦点策略，确保能接收键盘事件
         self.setFocusPolicy(Qt.StrongFocus)
@@ -81,6 +86,9 @@ class PreviewPanel(QWidget):
         # 如果是支持的视频格式，则显示视频预览面板
         elif ext in self.supported_video_formats:
             self.show_video_preview(file_path)
+        # 如果是支持的文本格式，则显示文本预览面板
+        elif ext in self.supported_text_formats:
+            self.show_text_preview(file_path)
         else:
             self.show_message("不支持的文件格式")
 
@@ -130,6 +138,7 @@ class PreviewPanel(QWidget):
 
         # 替换显示内容为图片预览面板
         self.scroll_area.setWidget(image_preview_panel)
+        self.current_preview_panel = image_preview_panel
 
         # 设置焦点到预览面板，确保能接收键盘事件
         image_preview_panel.setFocus()
@@ -155,11 +164,45 @@ class PreviewPanel(QWidget):
 
         # 替换显示内容为视频预览面板
         self.scroll_area.setWidget(video_preview_panel)
+        self.current_preview_panel = video_preview_panel
 
         # 设置焦点到预览面板，确保能接收键盘事件
         video_preview_panel.setFocus()
 
+    def show_text_preview(self, file_path):
+        """
+        显示文本预览
 
+        Args:
+            file_path (str): 文本文件路径
+        """
+        # 创建新的文本预览面板
+        text_preview_panel = TextPreviewPanel()
+
+        # 加载文本文件
+        text_preview_panel.load_text_file(file_path)
+
+        # 连接文件保存信号
+        text_preview_panel.file_saved.connect(self.on_text_file_saved)
+
+        # 替换显示内容为文本预览面板
+        self.scroll_area.setWidget(text_preview_panel)
+        self.current_preview_panel = text_preview_panel
+
+        # 设置焦点到预览面板，确保能接收键盘事件
+        text_preview_panel.setFocus()
+
+        return True
+
+    def on_text_file_saved(self, file_path):
+        """
+        处理文本文件保存事件
+
+        Args:
+            file_path (str): 保存的文件路径
+        """
+        # 可以在这里添加保存后的处理逻辑
+        logger.info(f"文本文件已保存: {file_path}")
 
     def wheelEvent(self, event: QWheelEvent):
         """

@@ -949,9 +949,6 @@ class ImageLabel(QLabel):
                     self.current_rectangle = None
                     self.selected_point_info = None
                     self.selected_control_point = None  # 清除选中的控制点
-                    # 清除高亮状态
-                    self.clear_highlights()
-
                     # 准备拖动操作（统一处理所有类型注解）
                     self.dragging = True
                     self.resizing = False
@@ -968,12 +965,6 @@ class ImageLabel(QLabel):
 
                     self.update()
                     return
-
-            # 只有在点击空白区域时才清除高亮状态
-            if not annotation_clicked:
-                # 清除选中状态
-                self.clear_selection()
-
 
             # 只有在点击空白区域时才清除高亮状态
             if not annotation_clicked:
@@ -1113,6 +1104,10 @@ class ImageLabel(QLabel):
             self.update()
             # 保存YOLO标注
             self.save_yolo_annotations()
+            # 直接调用方法更新详情面板，而不是使用信号
+            if self.preview_panel:
+                annotations = self.get_annotations()
+                self.preview_panel.details_panel.update_annotations(annotations)
         elif self.dragging or self.resizing:
             # 完成拖动或调整大小操作
             self.dragging = False
@@ -1121,6 +1116,10 @@ class ImageLabel(QLabel):
             self.update()
             # 保存YOLO标注
             self.save_yolo_annotations()
+            # 直接调用方法更新详情面板，而不是使用信号
+            if self.preview_panel:
+                annotations = self.get_annotations()
+                self.preview_panel.details_panel.update_annotations(annotations)
         elif self.dragging or self.resizing:
             # 完成拖动或调整大小操作
             self.dragging = False
@@ -1129,13 +1128,14 @@ class ImageLabel(QLabel):
             self.update()
             # 保存YOLO标注
             self.save_yolo_annotations()
+            # 直接调用方法更新详情面板，而不是使用信号
+            if self.preview_panel:
+                annotations = self.get_annotations()
+                self.preview_panel.details_panel.update_annotations(annotations)
         elif not self.drawing:
             # 如果不是在绘制状态，保持当前选择不变
             self.update()
-        # 直接调用方法更新详情面板，而不是使用信号
-        if self.preview_panel:
-            annotations = self.get_annotations()
-            self.preview_panel.details_panel.update_annotations(annotations)
+
 
     def mouseDoubleClickEvent(self, event):
         """处理鼠标双击事件"""
@@ -1369,6 +1369,7 @@ class ImageLabel(QLabel):
         """返回最小大小"""
         return QSize(200, 150)
 
+
 class ImageDetailsPanel(QWidget):
     """
     图片详情面板类，用于显示图片标注的分类和详细信息
@@ -1564,6 +1565,75 @@ class ImageDetailsPanel(QWidget):
         # 直接调用预览面板的方法
         if self.preview_panel:
             self.preview_panel.image_label.clear_selection()
+
+    def select_annotation_by_data(self, annotation_data):
+        """
+        根据标注数据选中对应的项
+
+        Args:
+            annotation_data (dict): 标注数据，包含类型、标签等信息
+        """
+        if not annotation_data:
+            return
+
+        # 在详情表中查找匹配的标注
+        for row in range(self.detail_table.rowCount()):
+            for col in range(self.detail_table.columnCount()):
+                item = self.detail_table.item(row, col)
+                if item:
+                    item_data = item.data(Qt.UserRole)
+                    if item_data and self._is_annotation_match(item_data, annotation_data):
+                        # 选中匹配的行
+                        self.detail_table.selectRow(row)
+
+        # 如果在详情表中没有找到，尝试在分类表中查找
+        target_label = annotation_data.get('label', '')
+        for row in range(self.class_table.rowCount()):
+            item = self.class_table.item(row, 0)
+            if item and item.data(Qt.UserRole) == target_label:
+                # 选中匹配的行
+                self.class_table.selectRow(row)
+
+    def _is_annotation_match(self, item_data, annotation_data):
+        """
+        检查两个标注数据是否匹配
+
+        Args:
+            item_data (dict): 表格项中的标注数据
+            annotation_data (dict): 要匹配的标注数据
+
+        Returns:
+            bool: 是否匹配
+        """
+        # 检查类型是否匹配
+        if item_data.get('type') != annotation_data.get('type'):
+            return False
+
+        # 检查标签是否匹配
+        if item_data.get('label') != annotation_data.get('label'):
+            return False
+
+        # 对于矩形，检查矩形是否相同
+        if item_data.get('type') == 'rectangle' and annotation_data.get('type') == 'rectangle':
+            rect1 = item_data.get('rectangle')
+            rect2 = annotation_data.get('rectangle')
+            if rect1 and rect2:
+                return (rect1.x() == rect2.x() and
+                        rect1.y() == rect2.y() and
+                        rect1.width() == rect2.width() and
+                        rect1.height() == rect2.height())
+
+        # 对于多边形，检查点是否相同
+        elif item_data.get('type') == 'polygon' and annotation_data.get('type') == 'polygon':
+            points1 = item_data.get('points', [])
+            points2 = annotation_data.get('points', [])
+            if len(points1) == len(points2):
+                for p1, p2 in zip(points1, points2):
+                    if p1.x() != p2.x() or p1.y() != p2.y():
+                        return False
+                return True
+
+        return True
 
 
 class ImagePreviewPanel(QWidget):
