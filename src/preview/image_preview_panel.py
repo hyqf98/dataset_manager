@@ -1136,7 +1136,6 @@ class ImageLabel(QLabel):
             # 如果不是在绘制状态，保持当前选择不变
             self.update()
 
-
     def mouseDoubleClickEvent(self, event):
         """处理鼠标双击事件"""
         if self.pixmap:
@@ -1847,21 +1846,7 @@ class ImagePreviewPanel(QWidget):
         Args:
             event: 滚轮事件
         """
-        if event.modifiers() & Qt.ControlModifier:
-            # 调整缩放因子
-            if event.angleDelta().y() > 0 and self.scale_factor < 10.0:
-                self.scale_factor *= 1.1  # 放大
-            elif event.angleDelta().y() < 0 and self.scale_factor > 0.1:
-                self.scale_factor *= 0.9  # 缩小
-
-            # 更新图片显示
-            self.image_label.scale_factor = self.scale_factor
-            # 更新ImageLabel的大小
-            self.image_label.fit_image_to_view()
-            self.image_label.update()
-        else:
-            # 如果没有按Ctrl键，将事件传递给滚动区域处理
-            super().wheelEvent(event)
+        super().wheelEvent(event)
 
     def keyPressEvent(self, event):
         """

@@ -373,14 +373,14 @@ class FileManagerUI(QWidget):
             self.tree_view.dropEvent = self.handle_drop
 
             # 设置列宽
-            self.tree_view.setColumnWidth(0, 250)  # 名称列
+            self.tree_view.setColumnWidth(0, 150)  # 名称列
             self.tree_view.setColumnWidth(1, 100)  # 大小列
-            self.tree_view.setColumnWidth(2, 120)  # 类型列
+            self.tree_view.setColumnWidth(2, 50)  # 类型列
             self.tree_view.setColumnWidth(3, 150)  # 修改时间列
 
             # 增加整体最小尺寸
-            self.tree_view.setMinimumWidth(600)
-            self.tree_view.setMinimumHeight(400)
+            self.tree_view.setMinimumWidth(400)
+            self.tree_view.setMinimumHeight(500)
 
             # 添加控件到主布局
             main_layout.addLayout(button_layout)
@@ -389,9 +389,9 @@ class FileManagerUI(QWidget):
             main_layout.addWidget(self.tree_view)
 
             self.setLayout(main_layout)
-            
+
             # 设置面板的最小尺寸
-            self.setMinimumWidth(650)
+            self.setMinimumWidth(400)
             self.setMinimumHeight(500)
         except Exception as e:
             logger.error(f"初始化UI时发生异常: {str(e)}")
