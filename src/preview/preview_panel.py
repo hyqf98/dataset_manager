@@ -232,6 +232,14 @@ class PreviewPanel(QWidget):
             self.switch_to_previous_resource()
         elif event.key() == Qt.Key_D:
             self.switch_to_next_resource()
+        # 处理W/Q键的标注模式（转发给当前预览面板）
+        elif event.key() in [Qt.Key_W, Qt.Key_Q]:
+            # 如果当前有预览面板且是图片预览面板，则转发按键事件
+            if (self.current_preview_panel and 
+                isinstance(self.current_preview_panel, ImagePreviewPanel)):
+                self.current_preview_panel.keyPressEvent(event)
+            else:
+                super().keyPressEvent(event)
         else:
             super().keyPressEvent(event)
 

@@ -5,6 +5,11 @@ from PyQt5.QtWidgets import QApplication
 from src.ui.main_window import MainWindow
 from src.logging_config import logger
 
+# 确保所有模块都被导入，以便正确初始化
+import src.data_source
+import src.auto_annotation
+import src.dataset_split
+
 
 def main():
     """

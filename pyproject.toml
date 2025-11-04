@@ -5,10 +5,10 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "labelimg>=1.8.6",
-    "openai>=2.6.0",
+    "openai>=1.50.0",
     "opencv-python>=4.12.0.88",
     "PyQt5>=5.15.0",
+    "ultralytics>=8.3.0",
 ]
 
 [build-system]

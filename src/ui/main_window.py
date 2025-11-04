@@ -2,11 +2,16 @@ import os
 import traceback
 
 from PyQt5.QtCore import Qt, QEvent
-from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QSplitter, QMessageBox, QApplication, QDialog
+from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QSplitter, QMessageBox, QApplication, QDialog, QMenuBar, QAction, QFileDialog
 
 from ..file_manager.file_manager_panel import FileManagerPanel
 from ..logging_config import logger
 from ..preview.preview_panel import PreviewPanel
+from ..data_source.data_source_panel import DataSourcePanel
+from ..preview.live_preview_panel import LivePreviewPanel
+from ..auto_annotation.model_config_panel import ModelConfigPanel
+from ..auto_annotation.auto_annotation_panel import AutoAnnotationPanel
+from ..dataset_split.dataset_split_panel import DatasetSplitPanel
 
 
 class MainWindow(QMainWindow):
@@ -51,6 +56,9 @@ class MainWindow(QMainWindow):
                 window_width,
                 window_height
             )
+
+            # 创建菜单栏
+            self.create_menu_bar()
 
             # 创建中央部件和主布局
             central_widget = QWidget()
@@ -108,6 +116,40 @@ class MainWindow(QMainWindow):
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             raise
 
+    def create_menu_bar(self):
+        """
+        创建菜单栏
+        """
+        try:
+            menubar = self.menuBar()
+
+            # 数据源菜单
+            data_source_menu = menubar.addMenu('数据源')
+            data_source_action = QAction('数据源管理', self)
+            data_source_action.triggered.connect(self.open_data_source_panel)
+            data_source_menu.addAction(data_source_action)
+
+            # 自动标注菜单
+            auto_annotation_menu = menubar.addMenu('自动标注')
+            model_config_action = QAction('模型配置', self)
+            model_config_action.triggered.connect(self.open_model_config_panel)
+            auto_annotation_menu.addAction(model_config_action)
+            
+            auto_annotation_action = QAction('自动标注', self)
+            auto_annotation_action.triggered.connect(self.open_auto_annotation_panel)
+            auto_annotation_menu.addAction(auto_annotation_action)
+
+            # 数据集划分菜单
+            dataset_split_menu = menubar.addMenu('数据集划分')
+            dataset_split_action = QAction('数据集划分', self)
+            dataset_split_action.triggered.connect(self.open_dataset_split_panel)
+            dataset_split_menu.addAction(dataset_split_action)
+
+        except Exception as e:
+            logger.error(f"创建菜单栏时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            raise
+
     def on_file_selected(self, file_path):
         """
         处理文件选中事件
@@ -161,26 +203,114 @@ class MainWindow(QMainWindow):
             logger.error(f"处理文件管理器文件删除事件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
 
-    def on_annotations_updated(self, file_path, modified_annotation):
+    def open_data_source_panel(self):
         """
-        处理标注更新事件
+        打开数据源管理面板
+        """
+        try:
+            if not hasattr(self, 'data_source_panel'):
+                self.data_source_panel = DataSourcePanel()
+                # 连接播放信号
+                self.data_source_panel.play_requested.connect(self.play_live_stream)
+            
+            # 创建对话框并显示面板
+            dialog = QDialog(self)
+            dialog.setWindowTitle("数据源管理")
+            layout = QHBoxLayout(dialog)
+            layout.addWidget(self.data_source_panel)
+            dialog.resize(800, 600)
+            # 设置对话框的父引用，以便在播放时可以关闭
+            self.data_source_panel.dialog_parent = dialog
+            dialog.exec_()
+        except Exception as e:
+            logger.error(f"打开数据源管理面板时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"打开数据源管理面板时发生异常: {str(e)}")
 
-        Args:
-            file_path (str): 文件路径
-            modified_annotation (Annotation): 被修改的标注对象
+    def play_live_stream(self, data_source):
         """
-        logger.debug(f"处理标注更新事件: {file_path}")
-        # 可以在这里添加其他处理逻辑
+        播放直播流
+        """
+        try:
+            # 创建直播预览面板
+            live_preview_panel = LivePreviewPanel(data_source)
 
-    def on_annotation_selected_in_image(self, annotation):
-        """
-        处理图片上选中标注的事件
+            # 连接信号
+            live_preview_panel.switch_to_previous.connect(self.preview_panel.switch_to_previous_resource)
+            live_preview_panel.switch_to_next.connect(self.preview_panel.switch_to_next_resource)
 
-        Args:
-            annotation: 被选中的标注对象(矩形或多边形)
+            # 在预览面板中显示直播预览面板
+            self.preview_panel.scroll_area.setWidget(live_preview_panel)
+            self.preview_panel.current_preview_panel = live_preview_panel
+
+            # 设置焦点到预览面板，确保能接收键盘事件
+            live_preview_panel.setFocus()
+
+            logger.info(f"播放直播流: {data_source.stream_url}")
+        except Exception as e:
+            logger.error(f"播放直播流时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"播放直播流时发生异常: {str(e)}")
+
+    def open_model_config_panel(self):
         """
-        logger.debug(f"处理图片上选中标注事件: {annotation}")
-        # 可以在这里添加其他处理逻辑
+        打开模型配置面板
+        """
+        try:
+            if not hasattr(self, 'model_config_panel'):
+                self.model_config_panel = ModelConfigPanel()
+            
+            # 创建对话框并显示面板
+            dialog = QDialog(self)
+            dialog.setWindowTitle("模型配置")
+            layout = QHBoxLayout(dialog)
+            layout.addWidget(self.model_config_panel)
+            dialog.resize(800, 600)
+            dialog.exec_()
+        except Exception as e:
+            logger.error(f"打开模型配置面板时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"打开模型配置面板时发生异常: {str(e)}")
+
+    def open_auto_annotation_panel(self):
+        """
+        打开自动标注面板
+        """
+        try:
+            if not hasattr(self, 'auto_annotation_panel'):
+                self.auto_annotation_panel = AutoAnnotationPanel()
+            
+            # 创建对话框并显示面板
+            dialog = QDialog(self)
+            dialog.setWindowTitle("自动标注")
+            layout = QHBoxLayout(dialog)
+            layout.addWidget(self.auto_annotation_panel)
+            dialog.resize(800, 600)
+            dialog.exec_()
+        except Exception as e:
+            logger.error(f"打开自动标注面板时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"打开自动标注面板时发生异常: {str(e)}")
+
+    def open_dataset_split_panel(self):
+        """
+        打开数据集划分面板
+        """
+        try:
+            if not hasattr(self, 'dataset_split_panel'):
+                self.dataset_split_panel = DatasetSplitPanel()
+            
+            # 创建对话框并显示面板
+            dialog = QDialog(self)
+            dialog.setWindowTitle("数据集划分")
+            layout = QHBoxLayout(dialog)
+            layout.addWidget(self.dataset_split_panel)
+            dialog.resize(600, 400)
+            dialog.exec_()
+        except Exception as e:
+            logger.error(f"打开数据集划分面板时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"打开数据集划分面板时发生异常: {str(e)}")
 
     def eventFilter(self, obj, event):
         """
@@ -248,6 +378,18 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"窗口显示事件处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

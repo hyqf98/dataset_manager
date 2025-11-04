@@ -1,7 +1,7 @@
 import os
 
 from PyQt5.QtCore import Qt, QRect, QPoint, QSize
-from PyQt5.QtGui import QPixmap, QPainter, QPen, QPolygon, QFont, QIcon
+from PyQt5.QtGui import QPixmap, QPainter, QPen, QPolygon, QFont, QIcon, QColor
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel, QInputDialog, \
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QPushButton, QSizePolicy
 
@@ -242,6 +242,10 @@ class PolygonData:
 
 class ImageLabel(QLabel):
 
+    # 全局标注模式状态
+    global_annotation_mode = False
+    global_annotation_label = ""
+
     def __init__(self):
         super().__init__()
         self.pixmap = None
@@ -253,6 +257,7 @@ class ImageLabel(QLabel):
         self.mouse_pos = QPoint()  # 鼠标位置
         self.annotation_mode = False  # 标注模式开关
         self.current_annotation_label = ""  # 当前标注的标签内容
+        self.show_annotation_hint = False  # 是否显示标注提示
 
         # 注解相关属性
         self.annotations = []  # 存储所有已完成的注解
@@ -262,10 +267,12 @@ class ImageLabel(QLabel):
         self.highlighted_annotations = []  # 当前高亮的注解列表（仅高亮，不可编辑）
         self.drawing = False
         self.dragging = False  # 是否正在拖动注解
+
         self.resizing = False  # 是否正在调整矩形框大小
         self.drag_start_point = QPoint()  # 拖动起始点
         self.drag_annotation_start_pos = QPoint()  # 被拖动注解的初始位置
         self.resize_handle = None  # 调整大小的控制点位置
+
         self.resize_rectangle_start_rect = QRect()  # 调整大小时矩形框的初始状态
 
         # 多边形相关属性
@@ -1176,6 +1183,24 @@ class ImageLabel(QLabel):
             )
             painter.drawPixmap(x, y, scaled_pixmap)
 
+        # 绘制标注提示信息
+        if self.show_annotation_hint and self.annotation_mode and self.current_annotation_label:
+            painter.setPen(QPen(Qt.red, 2))
+            font = QFont()
+            font.setPointSize(16)
+            painter.setFont(font)
+
+            # 绘制半透明背景框
+            text = f"标注模式: {self.current_annotation_label}"
+            text_rect = painter.fontMetrics().boundingRect(text)
+            hint_rect = QRect(10, 10, text_rect.width() + 20, text_rect.height() + 10)
+            # 使用半透明黄色背景
+            painter.fillRect(hint_rect, QColor(255, 255, 0, 128))  # 50% 透明度
+            painter.drawRect(hint_rect)
+
+            # 绘制文本
+            painter.drawText(hint_rect, Qt.AlignCenter, text)
+
         # 绘制所有已完成的注解
         for annotation in self.annotations:
             # 临时设置选中状态
@@ -1315,15 +1340,64 @@ class ImageLabel(QLabel):
         else:
             raise ValueError(f"Unsupported mode: {mode}. Use 'rectangle' or 'polygon.")
 
+    def set_image(self, file_path):
+        self.file_path = file_path
+        self.pixmap = QPixmap(file_path)
+        self.scale_factor = 1.0  # 重置缩放因子
+        self.zoom_count = 0  # 重置缩放计数器
+
+        # 重置注解相关属性
+        self.annotations = []
+        self.current_rectangle = None
+        self.selected_annotation = None
+        self.highlighted_annotations = []  # 重置高亮注解列表
+        self.drawing = False
+        self.dragging = False
+        self.resizing = False
+
+        # 重置多边形相关属性
+        self.current_polygon = PolygonData()
+        self.selected_point_info = None
+        self.selected_control_point = None
+        self.dragging_polygon = False
+
+        # 如果全局标注模式开启，则应用到当前图片
+        if ImageLabel.global_annotation_mode:
+            self.annotation_mode = True
+            self.show_annotation_hint = True
+            self.current_annotation_label = ImageLabel.global_annotation_label
+            self.setCursor(Qt.CrossCursor)
+        else:
+            self.annotation_mode = False
+            self.show_annotation_hint = False
+            self.current_annotation_label = ""
+            self.setCursor(Qt.ArrowCursor)
+
+        # 加载已有的YOLO标注
+        self.load_yolo_annotations()
+
+        # 自动调整缩放因子以适应显示区域
+        self.fit_image_to_view()
+
     def start_annotation_mode(self):
         """启动标注模式"""
-        self.annotation_mode = True
-        self.setCursor(Qt.CrossCursor)  # 更改鼠标样式为十字
-        self.update()
+        if not self.annotation_mode:  # 只有在未开启标注模式时才提示
+            self.annotation_mode = True
+            self.show_annotation_hint = True
+            ImageLabel.global_annotation_mode = True  # 设置全局标注模式
+            ImageLabel.global_annotation_label = self.current_annotation_label  # 保存全局标注标签
+            self.setCursor(Qt.CrossCursor)  # 更改鼠标样式为十字
+            self.update()
+        else:
+            # 如果已经开启了标注模式，则不需要重复开启
+            pass
 
     def exit_annotation_mode(self):
         """退出标注模式"""
         self.annotation_mode = False
+        self.show_annotation_hint = False  # 隐藏标注提示
+        ImageLabel.global_annotation_mode = False  # 关闭全局标注模式
+        ImageLabel.global_annotation_label = ""  # 清空全局标注标签
         self.drawing = False
         self.current_rectangle = None
         self.current_polygon = PolygonData()
@@ -1339,6 +1413,7 @@ class ImageLabel(QLabel):
         available_size = self.get_available_size()
         if available_size.width() <= 0 or available_size.height() <= 0:
             return
+
 
         # 计算缩放比例
         scale_x = available_size.width() / self.pixmap.width()
@@ -1552,8 +1627,8 @@ class ImageDetailsPanel(QWidget):
                     # 更新详情面板
                     annotations = self.preview_panel.image_label.get_annotations()
                     self.update_annotations(annotations)
-
-        super().keyPressEvent(event)
+        else:
+            super().keyPressEvent(event)
 
     def clear_selection(self):
         """
@@ -1865,18 +1940,26 @@ class ImagePreviewPanel(QWidget):
                 super().keyPressEvent(event)
         # 处理W键开启标注模式
         elif event.key() == Qt.Key_W:
-            # 弹出输入框让用户输入标注内容（支持多个标签）
-            label, ok = QInputDialog.getText(self, '标注内容设置', '请输入标注内容(多个标签用逗号分隔):')
-            if ok and label:
-                # 设置当前标注内容
-                self.image_label.current_annotation_label = label
-                # 启动标注模式
-                self.image_label.start_annotation_mode()
-        # 处理Q键退出标注模式
+            # 检查是否已经开启了标注模式
+            if not self.image_label.annotation_mode:
+                # 弹出输入框让用户输入标注内容（支持多个标签）
+                label, ok = QInputDialog.getText(self, '标注内容设置', '请输入标注内容(多个标签用逗号分隔):')
+                if ok and label:
+                    # 设置当前标注内容
+                    self.image_label.current_annotation_label = label
+                    # 启动标注模式
+                    self.image_label.start_annotation_mode()
+            else:
+                # 如果已经开启了标注模式，提示用户
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.information(self, '提示', '标注模式已经开启')
+        # 处理Q键退出标注模式（仅在图片模式下有效）
         elif event.key() == Qt.Key_Q:
-            self.image_label.exit_annotation_mode()
-            # 清除当前标注内容
-            self.image_label.current_annotation_label = ""
+            # 只有在当前显示的是图片时才允许退出标注模式
+            if self.current_file_path and self.image_label.pixmap:
+                self.image_label.exit_annotation_mode()
+                # 清除当前标注内容
+                self.image_label.current_annotation_label = ""
         else:
             super().keyPressEvent(event)
 

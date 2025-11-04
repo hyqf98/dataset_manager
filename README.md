@@ -15,12 +15,18 @@
    - 文件删除到回收站
    - 回收站文件还原
    - 彻底删除文件
+6. 自动标注功能：
+   - 支持YOLO模型自动标注
+   - 支持OpenAI视觉模型自动标注
+   - 生成YOLO格式标注文件
 
 ## 环境要求
 
 - Python >= 3.9
 - opencv-python
 - PyQt5
+- ultralytics (用于YOLO模型)
+- openai (用于OpenAI模型)
 
 ## 安装依赖
 
@@ -49,6 +55,15 @@ python main.py
 5. 使用 Shift+滚轮 对图片进行水平滚动
 6. 使用"移除文件夹"将文件移动到回收站
 7. 点击"回收站"管理已删除的文件
+8. 配置自动标注模型：
+   - 在"模型配置"中添加YOLO或OpenAI模型配置
+   - YOLO模型需要指定模型文件路径和分类列表
+   - OpenAI模型需要指定API密钥、模型名称和提示词
+9. 使用自动标注功能：
+   - 在"自动标注"中添加标注任务
+   - 选择配置好的模型和数据集路径
+   - 开始标注任务
+   - 标注结果将保存在数据集目录下的labels文件夹中
 
 ## 项目结构
 
@@ -56,6 +71,9 @@ python main.py
 dataset_manager/
 ├── main.py                           # 程序入口
 ├── src/                              # 源代码目录
+│   ├── auto_annotation/              # 自动标注模块
+│   │   ├── auto_annotation_panel.py  # 自动标注面板
+│   │   └── model_config_panel.py     # 模型配置面板
 │   ├── file_manager/                 # 文件管理模块
 │   │   ├── __init__.py
 │   │   ├── panel.py                  # 文件管理面板
