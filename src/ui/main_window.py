@@ -208,10 +208,10 @@ class MainWindow(QMainWindow):
         打开数据源管理面板
         """
         try:
-            if not hasattr(self, 'data_source_panel'):
-                self.data_source_panel = DataSourcePanel()
-                # 连接播放信号
-                self.data_source_panel.play_requested.connect(self.play_live_stream)
+            # 每次都创建新的实例，避免使用已销毁的对象
+            self.data_source_panel = DataSourcePanel()
+            # 连接播放信号
+            self.data_source_panel.play_requested.connect(self.play_live_stream)
             
             # 创建对话框并显示面板
             dialog = QDialog(self)
@@ -222,6 +222,15 @@ class MainWindow(QMainWindow):
             # 设置对话框的父引用，以便在播放时可以关闭
             self.data_source_panel.dialog_parent = dialog
             dialog.exec_()
+            
+            # 断开信号连接并清理引用，避免访问已销毁的对象
+            try:
+                self.data_source_panel.play_requested.disconnect(self.play_live_stream)
+            except (TypeError, RuntimeError):
+                # 如果信号未连接或对象已销毁，则忽略错误
+                pass
+            if hasattr(self, 'data_source_panel'):
+                delattr(self, 'data_source_panel')
         except Exception as e:
             logger.error(f"打开数据源管理面板时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -257,8 +266,8 @@ class MainWindow(QMainWindow):
         打开模型配置面板
         """
         try:
-            if not hasattr(self, 'model_config_panel'):
-                self.model_config_panel = ModelConfigPanel()
+            # 每次都创建新的实例，避免使用已销毁的对象
+            self.model_config_panel = ModelConfigPanel()
             
             # 创建对话框并显示面板
             dialog = QDialog(self)
@@ -267,6 +276,10 @@ class MainWindow(QMainWindow):
             layout.addWidget(self.model_config_panel)
             dialog.resize(800, 600)
             dialog.exec_()
+            
+            # 清理引用，避免访问已销毁的对象
+            if hasattr(self, 'model_config_panel'):
+                delattr(self, 'model_config_panel')
         except Exception as e:
             logger.error(f"打开模型配置面板时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -277,8 +290,8 @@ class MainWindow(QMainWindow):
         打开自动标注面板
         """
         try:
-            if not hasattr(self, 'auto_annotation_panel'):
-                self.auto_annotation_panel = AutoAnnotationPanel()
+            # 每次都创建新的实例，避免使用已销毁的对象
+            self.auto_annotation_panel = AutoAnnotationPanel()
             
             # 创建对话框并显示面板
             dialog = QDialog(self)
@@ -287,6 +300,10 @@ class MainWindow(QMainWindow):
             layout.addWidget(self.auto_annotation_panel)
             dialog.resize(800, 600)
             dialog.exec_()
+            
+            # 清理引用，避免访问已销毁的对象
+            if hasattr(self, 'auto_annotation_panel'):
+                delattr(self, 'auto_annotation_panel')
         except Exception as e:
             logger.error(f"打开自动标注面板时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -297,8 +314,8 @@ class MainWindow(QMainWindow):
         打开数据集划分面板
         """
         try:
-            if not hasattr(self, 'dataset_split_panel'):
-                self.dataset_split_panel = DatasetSplitPanel()
+            # 每次都创建新的实例，避免使用已销毁的对象
+            self.dataset_split_panel = DatasetSplitPanel()
             
             # 创建对话框并显示面板
             dialog = QDialog(self)
@@ -307,6 +324,10 @@ class MainWindow(QMainWindow):
             layout.addWidget(self.dataset_split_panel)
             dialog.resize(600, 400)
             dialog.exec_()
+            
+            # 清理引用，避免访问已销毁的对象
+            if hasattr(self, 'dataset_split_panel'):
+                delattr(self, 'dataset_split_panel')
         except Exception as e:
             logger.error(f"打开数据集划分面板时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -378,6 +399,12 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"窗口显示事件处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+
+
+
+
+
 
 
 

@@ -1,5 +1,7 @@
-import cv2
 import os
+import time
+
+import cv2
 import json
 from enum import Enum
 from typing import Optional
@@ -15,14 +17,17 @@ class AnnotationTask:
     自动标注任务类
     """
 
-    def __init__(self, id: int, model_config_id: int, dataset_path: str):
+    def __init__(self, id: int, model_config_id: int, dataset_path: str, 
+                 status: str = "未开始", progress: int = 0, total_files: int = 0, processed_files: int = 0,
+                 error_message: str = ""):
         self.id = id
         self.model_config_id = model_config_id
         self.dataset_path = dataset_path
-        self.status = "未开始"  # 未开始, 进行中, 已完成, 已停止, 错误
-        self.progress = 0
-        self.total_files = 0
-        self.processed_files = 0
+        self.status = status  # 未开始, 进行中, 已完成, 已停止, 错误
+        self.progress = progress
+        self.total_files = total_files
+        self.processed_files = processed_files
+        self.error_message = error_message  # 添加异常信息字段
 
 
 class AnnotationTaskManager:
@@ -30,8 +35,26 @@ class AnnotationTaskManager:
     标注任务管理器
     """
 
-    def __init__(self, tasks_file="annotation_tasks.json"):
-        self.tasks_file = tasks_file
+    def __init__(self, tasks_file=None):
+        # 将配置文件路径设置为用户目录下的.dataset_m路径
+        if tasks_file is None:
+            user_home = os.path.expanduser("~")
+            dataset_manager_dir = os.path.join(user_home, ".dataset_m")
+            # 确保目录存在
+            os.makedirs(dataset_manager_dir, exist_ok=True)
+            self.tasks_file = os.path.join(dataset_manager_dir, "annotation_tasks.json")
+            
+            # 检查并移动旧的配置文件
+            old_tasks_file = "annotation_tasks.json"
+            if os.path.exists(old_tasks_file) and not os.path.exists(self.tasks_file):
+                try:
+                    import shutil
+                    shutil.move(old_tasks_file, self.tasks_file)
+                    logger.info(f"已将旧的标注任务文件从 {old_tasks_file} 移动到 {self.tasks_file}")
+                except Exception as e:
+                    logger.error(f"移动旧的标注任务文件时出错: {e}")
+        else:
+            self.tasks_file = tasks_file
         self.tasks = []
         self.load_tasks()
 
@@ -43,7 +66,24 @@ class AnnotationTaskManager:
             if os.path.exists(self.tasks_file):
                 with open(self.tasks_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    self.tasks = [AnnotationTask(**item) for item in data]
+                    # 使用字典解包创建任务对象，确保所有字段都被正确处理
+                    self.tasks = []
+                    for item in data:
+                        # 确保必需的字段存在
+                        if all(key in item for key in ['id', 'model_config_id', 'dataset_path']):
+                            task = AnnotationTask(
+                                id=item['id'],
+                                model_config_id=item['model_config_id'],
+                                dataset_path=item['dataset_path'],
+                                status=item.get('status', '未开始'),
+                                progress=item.get('progress', 0),
+                                total_files=item.get('total_files', 0),
+                                processed_files=item.get('processed_files', 0),
+                                error_message=item.get('error_message', '')  # 加载异常信息
+                            )
+                            self.tasks.append(task)
+                        else:
+                            logger.warning(f"跳过无效的任务数据: {item}")
                 logger.info(f"加载了 {len(self.tasks)} 个标注任务")
             else:
                 self.tasks = []
@@ -57,6 +97,9 @@ class AnnotationTaskManager:
         保存标注任务到配置文件
         """
         try:
+            # 确保目录存在
+            os.makedirs(os.path.dirname(self.tasks_file), exist_ok=True)
+            
             data = []
             for task in self.tasks:
                 task_data = {
@@ -66,7 +109,8 @@ class AnnotationTaskManager:
                     'status': task.status,
                     'progress': task.progress,
                     'total_files': task.total_files,
-                    'processed_files': task.processed_files
+                    'processed_files': task.processed_files,
+                    'error_message': getattr(task, 'error_message', '')  # 保存异常信息
                 }
                 data.append(task_data)
 
@@ -174,7 +218,7 @@ class AnnotationTaskForm(QDialog):
                 return None
 
             return AnnotationTask(
-                id=int(round(os.time.time() * 1000)),  # 使用时间戳作为ID
+                id=int(round(time.time() * 1000)),  # 使用时间戳作为ID
                 model_config_id=model_config_id,
                 dataset_path=dataset_path
             )
@@ -188,6 +232,8 @@ class AnnotationWorker(QThread):
     progress_updated = pyqtSignal(int, int, int)  # processed, total, task_id
     task_finished = pyqtSignal(int, str)  # task_id, status
     log_message = pyqtSignal(str)  # log message
+    task_error = pyqtSignal(int, str)  # task_id, error_message
+    task_data_updated = pyqtSignal(int, int, int)  # task_id, processed_files, total_files
 
     def __init__(self, task: AnnotationTask, model_config):
         super().__init__()
@@ -207,6 +253,9 @@ class AnnotationWorker(QThread):
             image_files = self.get_image_files(self.task.dataset_path)
             self.task.total_files = len(image_files)
             self.task.processed_files = 0
+            
+            # 发送任务数据更新信号
+            self.task_data_updated.emit(self.task.id, self.task.processed_files, self.task.total_files)
 
             self.log_message.emit(f"找到 {self.task.total_files} 个图片文件")
 
@@ -223,6 +272,8 @@ class AnnotationWorker(QThread):
 
                 self.process_image(image_file, labels_dir)
                 self.task.processed_files = i + 1
+                # 发送任务数据更新信号
+                self.task_data_updated.emit(self.task.id, self.task.processed_files, self.task.total_files)
                 self.progress_updated.emit(self.task.processed_files, self.task.total_files, self.task.id)
 
             if self.is_running:
@@ -231,8 +282,10 @@ class AnnotationWorker(QThread):
                 self.log_message.emit(f"标注任务 {self.task.id} 完成")
         except Exception as e:
             self.task.status = "错误"
+            error_msg = f"标注任务 {self.task.id} 出错: {str(e)}"
+            self.task_error.emit(self.task.id, error_msg)  # 发送错误信号
             self.task_finished.emit(self.task.id, "错误")
-            self.log_message.emit(f"标注任务 {self.task.id} 出错: {str(e)}")
+            self.log_message.emit(error_msg)
             logger.error(f"标注任务 {self.task.id} 出错: {str(e)}")
 
     def get_image_files(self, dataset_path):
@@ -286,23 +339,23 @@ class AnnotationWorker(QThread):
             if "world" in os.path.basename(model_path).lower():
                 # 使用YOLO-World模型
                 model = YOLOWorld(model_path)
-                
+
                 # 获取配置的分类列表
                 configured_classes = self.model_config.yolo_classes
-                
+
                 # 如果配置了分类，设置要检测的类别
                 if configured_classes:
                     model.set_classes(configured_classes)
-                    
+
                 # 进行推理
                 results = model(image_file)
             else:
                 # 使用普通YOLO模型
                 model = YOLO(model_path)
-                
+
                 # 获取配置的分类列表
                 configured_classes = self.model_config.yolo_classes
-                
+
                 # 进行推理
                 if configured_classes:
                     # 如果配置了分类，使用classes参数进行过滤
@@ -314,7 +367,7 @@ class AnnotationWorker(QThread):
                                 if name == class_name:
                                     class_indices.append(idx)
                                     break
-                    
+
                     if class_indices:
                         results = model(image_file, classes=class_indices)
                     else:
@@ -322,20 +375,20 @@ class AnnotationWorker(QThread):
                 else:
                     # 如果没有配置分类，检测所有类别
                     results = model(image_file)
-            
+
             # 生成标注文件
             image_name = os.path.splitext(os.path.basename(image_file))[0]
             label_file = os.path.join(labels_dir, f"{image_name}.txt")
-            
+
             # 获取图片尺寸
             import cv2
             img = cv2.imread(image_file)
             if img is None:
                 self.log_message.emit(f"无法读取图片文件: {image_file}")
                 return
-                
+
             img_height, img_width = img.shape[:2]
-            
+
             # 写入YOLO格式的标注
             with open(label_file, 'w') as f:
                 for result in results:
@@ -344,38 +397,38 @@ class AnnotationWorker(QThread):
                         for box in boxes:
                             # 获取类别ID
                             class_id = int(box.cls)
-                            
+
                             # 获取类别名称
                             if hasattr(result, 'names') and class_id < len(result.names):
                                 class_name = result.names[class_id]
                             else:
                                 class_name = str(class_id)
-                            
+
                             # 获取边界框坐标
                             x1, y1, x2, y2 = box.xyxy[0].tolist()
-                            
+
                             # 转换为YOLO格式 (中心点x, 中心点y, 宽度, 高度，都是归一化值)
                             x_center = ((x1 + x2) / 2) / img_width
                             y_center = ((y1 + y2) / 2) / img_height
                             width = (x2 - x1) / img_width
                             height = (y2 - y1) / img_height
-                            
+
                             # 写入YOLO格式: class_id x_center y_center width height
                             f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
-            
+
             # 生成classes.txt文件（如果配置了分类）
             classes_to_write = []
             if hasattr(self.model_config, 'yolo_classes') and self.model_config.yolo_classes:
                 classes_to_write = self.model_config.yolo_classes
             elif hasattr(self.model_config, 'openai_classes') and self.model_config.openai_classes:
                 classes_to_write = self.model_config.openai_classes
-                
+
             if classes_to_write:
                 classes_file = os.path.join(labels_dir, 'classes.txt')
                 with open(classes_file, 'w') as f:
                     for class_name in classes_to_write:
                         f.write(f"{class_name}\n")
-            
+
             self.log_message.emit(f"使用YOLO处理图片完成: {image_file}")
         except Exception as e:
             self.log_message.emit(f"使用YOLO处理图片 {image_file} 时出错: {str(e)}")
@@ -398,24 +451,24 @@ class AnnotationWorker(QThread):
             api_url = self.model_config.openai_api_url
             api_key = self.model_config.openai_api_key
             model_name = self.model_config.openai_model_name
-            
+
             if not api_key:
                 self.log_message.emit(f"OpenAI API Key未配置")
                 return
-                
+
             if not model_name:
                 model_name = "gpt-4-vision-preview"  # 默认模型
-                
+
             # 设置OpenAI客户端
             client = openai.OpenAI(
                 base_url=api_url if api_url else None,
                 api_key=api_key
             )
-            
+
             # 读取并编码图片
             with open(image_file, "rb") as image_file:
                 base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-            
+
             # 构建系统提示词，确保输出为YOLO格式
             system_prompt = """你是一个图像识别专家。请分析图像并以YOLO格式输出检测结果。
 要求：
@@ -424,19 +477,19 @@ class AnnotationWorker(QThread):
 3. 所有坐标值必须是0-1之间的浮点数，表示相对于图像宽度和高度的比例
 4. 不要输出任何其他文本，只输出标注数据
 5. 如果没有检测到对象，不要输出任何内容"""
-            
+
             # 添加分类信息到系统提示词
             if hasattr(self.model_config, 'openai_classes') and self.model_config.openai_classes:
                 system_prompt += "\n\n可识别的分类包括：\n"
                 for i, class_name in enumerate(self.model_config.openai_classes):
                     system_prompt += f"{i}: {class_name}\n"
                 system_prompt += "\n请严格按照上述分类编号输出，不要使用其他编号。"
-            
+
             # 获取用户提示词
             user_prompt = self.model_config.openai_prompt
             if not user_prompt:
                 user_prompt = "请检测图像中的常见对象并标注"
-            
+
             # 发送请求到OpenAI
             response = client.chat.completions.create(
                 model=model_name,
@@ -460,14 +513,14 @@ class AnnotationWorker(QThread):
                 ],
                 max_tokens=500
             )
-            
+
             # 解析响应
             content = response.choices[0].message.content
-            
+
             # 生成标注文件
             image_name = os.path.splitext(os.path.basename(image_file))[0]
             label_file = os.path.join(labels_dir, f"{image_name}.txt")
-            
+
             # 写入标注结果
             with open(label_file, 'w') as f:
                 if content:
@@ -483,7 +536,7 @@ class AnnotationWorker(QThread):
                                 y_center = float(parts[2])
                                 width = float(parts[3])
                                 height = float(parts[4])
-                                
+
                                 # 验证数值范围
                                 if 0 <= x_center <= 1 and 0 <= y_center <= 1 and \
                                    0 <= width <= 1 and 0 <= height <= 1:
@@ -491,14 +544,14 @@ class AnnotationWorker(QThread):
                             except ValueError:
                                 # 跳过无效行
                                 continue
-            
+
             # 生成classes.txt文件（如果配置了分类）
             if self.model_config.yolo_classes:
                 classes_file = os.path.join(labels_dir, 'classes.txt')
                 with open(classes_file, 'w') as f:
                     for class_name in self.model_config.yolo_classes:
                         f.write(f"{class_name}\n")
-            
+
             self.log_message.emit(f"使用OpenAI处理图片完成: {image_file}")
         except Exception as e:
             self.log_message.emit(f"使用OpenAI处理图片 {image_file} 时出错: {str(e)}")
@@ -522,6 +575,7 @@ class AutoAnnotationPanel(QWidget):
         self.model_config_manager = ModelConfigManager()
         self.workers = {}  # 存储正在进行的标注任务线程
         self.init_ui()
+        # 初始化时不自动加载任务，只在需要时加载
 
     def init_ui(self):
         """
@@ -541,7 +595,7 @@ class AutoAnnotationPanel(QWidget):
                 border-bottom: 1px solid #ccc;
             }
         """)
-        
+
         # 创建按钮布局
         button_layout = QHBoxLayout()
         self.add_btn = QPushButton("➕ 添加标注任务")
@@ -561,7 +615,7 @@ class AutoAnnotationPanel(QWidget):
                 background-color: #3d8b40;
             }
         """)
-        
+
         self.refresh_btn = QPushButton("🔄 刷新")
         self.refresh_btn.setStyleSheet("""
             QPushButton {
@@ -589,7 +643,8 @@ class AutoAnnotationPanel(QWidget):
 
         # 创建任务列表
         self.task_tree = QTreeWidget()
-        self.task_tree.setHeaderLabels(["任务ID", "模型", "数据集路径", "状态", "进度"])
+        # 更新表头，添加处理数据和异常信息列
+        self.task_tree.setHeaderLabels(["任务ID", "模型", "数据集路径", "状态", "进度", "处理数据", "异常信息"])
         self.task_tree.setRootIsDecorated(False)
         self.task_tree.setAlternatingRowColors(True)
         self.task_tree.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -628,7 +683,7 @@ class AutoAnnotationPanel(QWidget):
         """
         刷新任务列表
         """
-        self.manager.load_tasks()
+        # 不再自动加载任务，只显示当前内存中的任务
         self.task_tree.clear()
 
         model_configs = {mc.id: mc for mc in self.model_config_manager.get_model_configs()}
@@ -646,6 +701,13 @@ class AutoAnnotationPanel(QWidget):
             else:
                 progress_text = "0%"
             item.setText(4, progress_text)
+            
+            # 显示处理数据
+            process_data_text = f"{task.processed_files}/{task.total_files}"
+            item.setText(5, process_data_text)
+            
+            # 显示异常信息
+            item.setText(6, getattr(task, 'error_message', ''))
 
             item.setData(0, Qt.UserRole, task.id)
 
@@ -698,11 +760,29 @@ class AutoAnnotationPanel(QWidget):
             QMessageBox.warning(self, "警告", "数据集路径不存在!")
             return
 
+        # 在开始任务前加载数据集信息
+        try:
+            image_files = self.get_image_files(task.dataset_path)
+            task.total_files = len(image_files)
+            task.processed_files = 0
+            # 清除之前的错误信息
+            if hasattr(task, 'error_message'):
+                task.error_message = ""
+        except Exception as e:
+            task.status = "错误"
+            task.error_message = f"无法访问数据集: {str(e)}"
+            self.manager.update_task(task)
+            self.refresh_tasks()
+            QMessageBox.critical(self, "错误", f"无法访问数据集: {str(e)}")
+            return
+
         # 创建并启动工作线程
         worker = AnnotationWorker(task, model_config)
         worker.progress_updated.connect(self.update_task_progress)
         worker.task_finished.connect(self.on_task_finished)
         worker.log_message.connect(self.on_log_message)
+        worker.task_error.connect(self.on_task_error)  # 连接错误信号
+        worker.task_data_updated.connect(self.update_task_data)  # 连接任务数据更新信号
 
         self.workers[task_id] = worker
         worker.start()
@@ -713,6 +793,21 @@ class AutoAnnotationPanel(QWidget):
         self.refresh_tasks()
 
         logger.info(f"开始标注任务: {task_id}")
+        
+    def get_image_files(self, dataset_path):
+        """
+        获取数据集中的所有图片文件
+        """
+        image_files = []
+        for root, dirs, files in os.walk(dataset_path):
+            # 跳过labels目录
+            if "labels" in dirs:
+                dirs.remove("labels")
+
+            for file in files:
+                if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    image_files.append(os.path.join(root, file))
+        return image_files
 
     def stop_task(self, task_id):
         """
@@ -729,7 +824,7 @@ class AutoAnnotationPanel(QWidget):
             for task in self.manager.get_tasks():
                 if task.id == task_id:
                     task.status = "已停止"
-                    self.manager.update_task(task)
+                    self.manager.update_task(task)  # 持久化更新
                     break
 
             self.refresh_tasks()
@@ -749,10 +844,30 @@ class AutoAnnotationPanel(QWidget):
             self.manager.delete_task(task_id)
             self.refresh_tasks()
 
+    def update_task_data(self, task_id, processed_files, total_files):
+        """
+        更新任务数据（由Worker线程调用）
+        """
+        # 更新内存中的任务数据
+        for task in self.manager.get_tasks():
+            if task.id == task_id:
+                task.processed_files = processed_files
+                task.total_files = total_files
+                self.manager.update_task(task)  # 持久化更新
+                break
+
     def update_task_progress(self, processed, total, task_id):
         """
         更新任务进度
         """
+        # 更新内存中的任务数据
+        for task in self.manager.get_tasks():
+            if task.id == task_id:
+                task.processed_files = processed
+                task.total_files = total
+                self.manager.update_task(task)  # 持久化更新
+                break
+        
         # 更新UI中的进度显示
         for i in range(self.task_tree.topLevelItemCount()):
             item = self.task_tree.topLevelItem(i)
@@ -762,6 +877,9 @@ class AutoAnnotationPanel(QWidget):
                 else:
                     progress_text = "0%"
                 item.setText(4, progress_text)
+                # 更新处理数据列
+                process_data_text = f"{processed}/{total}"
+                item.setText(5, process_data_text)
                 break
 
     def on_task_finished(self, task_id, status):
@@ -773,7 +891,7 @@ class AutoAnnotationPanel(QWidget):
             if task.id == task_id:
                 task.status = status
                 task.progress = 100 if status == "已完成" else task.progress
-                self.manager.update_task(task)
+                self.manager.update_task(task)  # 持久化更新
                 break
 
         # 移除工作线程
@@ -786,11 +904,54 @@ class AutoAnnotationPanel(QWidget):
         self.refresh_tasks()
         logger.info(f"标注任务 {task_id} 已完成，状态: {status}")
 
+    def on_task_error(self, task_id, error_message):
+        """
+        处理任务错误
+        """
+        # 更新任务的错误信息
+        for task in self.manager.get_tasks():
+            if task.id == task_id:
+                task.status = "错误"
+                task.error_message = error_message
+                self.manager.update_task(task)  # 持久化更新
+                break
+        
+        # 停止并清理工作线程
+        if task_id in self.workers:
+            worker = self.workers[task_id]
+            worker.quit()
+            worker.wait()
+            del self.workers[task_id]
+        
+        self.refresh_tasks()
+        logger.info(f"标注任务 {task_id} 出错: {error_message}")
+
     def on_log_message(self, message):
         """
         处理日志消息
         """
         logger.info(f"[自动标注] {message}")
+        
+        # 如果日志消息包含错误信息，更新任务的错误信息显示
+        if "出错:" in message or "错误:" in message:
+            # 提取任务ID和错误信息
+            # 格例: [自动标注] 标注任务 12345 出错: Some error message
+            # 或者: [自动标注] 处理图片 /path/to/image.jpg 时出错: Some error message
+            try:
+                # 尝试从消息中提取任务ID
+                import re
+                task_id_match = re.search(r'任务 (\d+)', message)
+                if task_id_match:
+                    task_id = int(task_id_match.group(1))
+                    # 更新对应任务的错误信息
+                    for task in self.manager.get_tasks():
+                        if task.id == task_id:
+                            task.error_message = message
+                            self.manager.update_task(task)
+                            break
+                self.refresh_tasks()
+            except Exception as e:
+                logger.error(f"处理错误日志消息时出错: {e}")
 
     def show_context_menu(self, position):
         """

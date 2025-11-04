@@ -76,8 +76,26 @@ class ModelConfigManager:
     模型配置管理器
     """
 
-    def __init__(self, config_file="model_configs.json"):
-        self.config_file = config_file
+    def __init__(self, config_file=None):
+        # 将配置文件路径设置为用户目录下的.dataset_m路径
+        if config_file is None:
+            user_home = os.path.expanduser("~")
+            dataset_manager_dir = os.path.join(user_home, ".dataset_m")
+            # 确保目录存在
+            os.makedirs(dataset_manager_dir, exist_ok=True)
+            self.config_file = os.path.join(dataset_manager_dir, "model_configs.json")
+            
+            # 检查并移动旧的配置文件
+            old_config_file = "model_configs.json"
+            if os.path.exists(old_config_file) and not os.path.exists(self.config_file):
+                try:
+                    import shutil
+                    shutil.move(old_config_file, self.config_file)
+                    logger.info(f"已将旧的模型配置文件从 {old_config_file} 移动到 {self.config_file}")
+                except Exception as e:
+                    logger.error(f"移动旧的模型配置文件时出错: {e}")
+        else:
+            self.config_file = config_file
         self.model_configs = []
         self.load_model_configs()
 
@@ -103,6 +121,9 @@ class ModelConfigManager:
         保存模型配置到配置文件
         """
         try:
+            # 确保目录存在
+            os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
+            
             data = [mc.to_dict() for mc in self.model_configs]
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)

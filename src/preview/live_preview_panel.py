@@ -319,6 +319,11 @@ class LivePreviewPanel(QWidget):
             
             self.play_btn.setText("⏸ 暂停")
             logger.info(f"设置直播流: {stream_url}")
+            
+            # 确保视频居中显示
+            self.video_view.centerOn(self.scene.sceneRect().center())
+            # 确保视频视图居中对齐
+            self.video_view.setAlignment(Qt.AlignCenter)
         else:
             # URL无效时显示错误信息
             self.scene.clear()
@@ -372,7 +377,7 @@ class LivePreviewPanel(QWidget):
                 # 创建QImage
                 q_img = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
                 
-                # 缩放图像以适应视图大小
+                # 缩放图像以适应视图大小并保持宽高比
                 view_size = self.video_view.size()
                 if view_size.width() > 0 and view_size.height() > 0:
                     scaled_img = q_img.scaled(view_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -380,10 +385,20 @@ class LivePreviewPanel(QWidget):
                     
                     # 清除场景并添加新图像
                     self.scene.clear()
-                    self.scene.addPixmap(pixmap)
+                    pixmap_item = self.scene.addPixmap(pixmap)
+                    
+                    # 确保场景矩形正确
+                    view_rect = self.video_view.rect()
+                    self.scene.setSceneRect(QRectF(0, 0, max(1, view_rect.width()), max(1, view_rect.height())))
+                    
+                    # 确保视频项在场景中居中
+                    pixmap_item.setPos(
+                        (view_rect.width() - pixmap.width()) / 2,
+                        (view_rect.height() - pixmap.height()) / 2
+                    )
                     
                     # 居中显示
-                    self.video_view.centerOn(pixmap.rect().center())
+                    self.video_view.centerOn(self.scene.sceneRect().center())
             except Exception as e:
                 logger.error(f"更新显示时出错: {e}")
 
