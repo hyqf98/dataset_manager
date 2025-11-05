@@ -69,7 +69,29 @@ class FileManagerProxyModel(QSortFilterProxyModel):
 
             # 检查当前路径是否属于任何一个根路径
             for root_path in self.root_paths:
-                if current_path == root_path or current_path.startswith(root_path + os.sep) or root_path.startswith(current_path + os.sep):
+                # 使用os.path.normpath标准化路径，处理不同操作系统的路径分隔符
+                normalized_current_path = os.path.normpath(current_path)
+                normalized_root_path = os.path.normpath(root_path)
+                
+                # 转换为统一的正斜杠格式，便于比较
+                normalized_current_path = normalized_current_path.replace(os.sep, "/")
+                normalized_root_path = normalized_root_path.replace(os.sep, "/")
+                
+                # 确保路径以斜杠结尾，便于准确比较
+                if not normalized_root_path.endswith("/"):
+                    normalized_root_path += "/"
+                
+                # 检查是否是根路径本身
+                if normalized_current_path == normalized_root_path.rstrip("/"):
+                    return True
+                    
+                # 检查是否在根路径之下（确保是完整的路径匹配）
+                if normalized_current_path.startswith(normalized_root_path):
+                    return True
+                    
+                # 检查是否是根路径的父目录（允许显示根路径的父目录以便导航）
+                if normalized_root_path.startswith(normalized_current_path + "/") or \
+                   normalized_root_path == normalized_current_path + "/":
                     return True
 
             return False
