@@ -98,6 +98,7 @@ class LivePreviewPanel(QWidget):
         self.display_timer.timeout.connect(self.update_display)
         self.display_timer.start(33)  # 约30 FPS
 
+        self.is_fullscreen = False  # 添加全屏模式标志
         self.init_ui()
 
         # 开始播放直播流
@@ -129,6 +130,19 @@ class LivePreviewPanel(QWidget):
         self.video_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.video_container.setMinimumSize(1, 1)  # 设置最小尺寸以确保显示
 
+        # 创建工具栏
+        self.toolbar = QHBoxLayout()
+        self.toolbar.setAlignment(Qt.AlignLeft)
+        self.toolbar.setSpacing(5)
+        self.toolbar.setContentsMargins(5, 5, 5, 5)  # 添加边距，避免按钮紧贴边框
+
+        # 添加快捷键说明标签到工具栏
+        self.toolbar.addWidget(self.shortcut_label)
+        self.toolbar.addStretch()
+
+        # 添加工具栏到视频布局
+        video_layout.addLayout(self.toolbar)
+
         # 创建视频显示区域 (使用QGraphicsView显示图像)
         self.video_view = QGraphicsView()
         self.scene = QGraphicsScene()
@@ -143,22 +157,6 @@ class LivePreviewPanel(QWidget):
         self.video_view.setAlignment(Qt.AlignCenter)
         
         video_layout.addWidget(self.video_view)
-
-        # 创建快捷键提示标签
-        self.shortcut_label = QLabel("空格: 播放/暂停  A: 上一个  D: 下一个  W: 截图  Delete: 删除")
-        self.shortcut_label.setStyleSheet("""
-            QLabel {
-                color: white;
-                background-color: rgba(0, 0, 0, 150);
-                padding: 5px 10px;
-                border-radius: 3px;
-                font-size: 12px;
-                font-family: Arial, sans-serif;
-            }
-        """)
-        self.shortcut_label.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.shortcut_label.setParent(self.video_view)
-        self.shortcut_label.move(10, 10)
 
         # 创建控制按钮容器，放置在视频下方
         self.control_container = QWidget()
@@ -189,6 +187,11 @@ class LivePreviewPanel(QWidget):
         self.backward_btn = QPushButton("⏪ 快退")
         self.backward_btn.clicked.connect(self.fast_backward)
         self.backward_btn.setStyleSheet("QPushButton { color: white; border: none; padding: 5px; }")
+
+        # 添加全屏切换按钮
+        self.fullscreen_btn = QPushButton("☐ 全屏")
+        self.fullscreen_btn.clicked.connect(self.toggle_fullscreen_mode)
+        self.fullscreen_btn.setStyleSheet("QPushButton { color: white; border: none; padding: 5px; }")
 
         # 录制按钮
         self.record_btn = QPushButton("⏺ 开始录制")
@@ -227,6 +230,7 @@ class LivePreviewPanel(QWidget):
         self.time_label = QLabel("LIVE")
         self.time_label.setStyleSheet("QLabel { color: white; }")
 
+        control_layout.addWidget(self.fullscreen_btn)
         control_layout.addWidget(self.play_btn)
         control_layout.addWidget(self.stop_btn)
         control_layout.addWidget(self.backward_btn)
@@ -631,6 +635,37 @@ class LivePreviewPanel(QWidget):
                 except Exception as e:
                     logger.error(f"删除媒体文件失败: {media_path}, 错误: {e}")
 
+    def toggle_fullscreen_mode(self):
+        """
+        切换全屏模式
+        """
+        self.set_fullscreen(not self.is_fullscreen)
+
+    def set_fullscreen(self, fullscreen):
+        """
+        设置全屏模式
+
+        Args:
+            fullscreen (bool): 是否进入全屏模式
+        """
+        self.is_fullscreen = fullscreen
+        if fullscreen:
+            # 隐藏媒体列表和分割器手柄
+            self.media_list.setVisible(False)
+            self.main_splitter.handle(1).setVisible(False)
+            # 设置分割器的大小，只显示视频部分
+            self.main_splitter.setSizes([self.main_splitter.width(), 0])
+            # 更新按钮文本
+            self.fullscreen_btn.setText("❐ 退出全屏")
+        else:
+            # 恢复媒体列表和分割器手柄
+            self.media_list.setVisible(True)
+            self.main_splitter.handle(1).setVisible(True)
+            # 恢复正常的分割器大小
+            self.main_splitter.setSizes([800, 200])
+            # 更新按钮文本
+            self.fullscreen_btn.setText("☐ 全屏")
+
     def keyPressEvent(self, event):
         """
         处理键盘按键事件
@@ -660,6 +695,10 @@ class LivePreviewPanel(QWidget):
         # 处理Delete键删除选中的媒体文件
         elif event.key() == Qt.Key_Delete:
             self.delete_selected_media()
+            event.accept()
+        # 处理F11键切换全屏模式
+        elif event.key() == Qt.Key_F11:
+            self.toggle_fullscreen_mode()
             event.accept()
         else:
             super().keyPressEvent(event)

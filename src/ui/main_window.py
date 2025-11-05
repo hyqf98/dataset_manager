@@ -27,6 +27,8 @@ class MainWindow(QMainWindow):
         """
         try:
             super().__init__()
+            self.fullscreen_mode = False  # 添加全屏模式标志
+            self.left_panel_visible = True  # 左侧面板可见性
             self.init_ui()
             logger.info("主窗口初始化完成")
         except Exception as e:
@@ -89,6 +91,9 @@ class MainWindow(QMainWindow):
             main_layout = QHBoxLayout(central_widget)
             main_layout.addWidget(splitter)
             central_widget.setLayout(main_layout)
+            
+            # 保存分割器引用，以便后续控制
+            self.splitter = splitter
         except Exception as e:
             logger.error(f"初始化主窗口UI时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -111,6 +116,9 @@ class MainWindow(QMainWindow):
 
             # 连接文件管理器的文件删除信号到预览面板清空
             self.file_manager_panel.events.file_deleted.connect(self.on_file_manager_file_deleted)
+            
+            # 连接预览面板的全屏模式切换信号
+            self.preview_panel.toggle_fullscreen.connect(self.toggle_fullscreen_mode)
         except Exception as e:
             logger.error(f"设置信号与槽连接时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -145,10 +153,36 @@ class MainWindow(QMainWindow):
             dataset_split_action.triggered.connect(self.open_dataset_split_panel)
             dataset_split_menu.addAction(dataset_split_action)
 
+            # 视图菜单
+            view_menu = menubar.addMenu('视图')
+            fullscreen_action = QAction('全屏模式', self)
+            fullscreen_action.setShortcut('F11')
+            fullscreen_action.triggered.connect(self.toggle_fullscreen_mode)
+            view_menu.addAction(fullscreen_action)
         except Exception as e:
             logger.error(f"创建菜单栏时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             raise
+
+    def toggle_fullscreen_mode(self):
+        """
+        切换全屏模式
+        """
+        self.fullscreen_mode = not self.fullscreen_mode
+        
+        if self.fullscreen_mode:
+            # 进入全屏模式
+            self.left_panel_visible = self.file_manager_panel.isVisible()
+            self.file_manager_panel.setVisible(False)
+            self.preview_panel.set_fullscreen(True)
+            # 进入全屏模式
+            self.showFullScreen()
+        else:
+            # 退出全屏模式
+            self.file_manager_panel.setVisible(self.left_panel_visible)
+            self.preview_panel.set_fullscreen(False)
+            # 退出全屏模式
+            self.showNormal()
 
     def on_file_selected(self, file_path):
         """
@@ -379,6 +413,11 @@ class MainWindow(QMainWindow):
                             return True
                     return False
 
+            # 检查是否是ESC键且处于全屏模式
+            elif event.type() == QEvent.KeyPress and event.key() == Qt.Key_Escape and self.fullscreen_mode:
+                self.toggle_fullscreen_mode()
+                return True
+            
             return super().eventFilter(obj, event)
         except Exception as e:
             logger.error(f"事件过滤器处理时发生异常: {str(e)}")
@@ -399,31 +438,3 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"窗口显示事件处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

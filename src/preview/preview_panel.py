@@ -21,6 +21,8 @@ class PreviewPanel(QWidget):
     # 定义资源切换信号
     switch_to_previous = pyqtSignal()
     switch_to_next = pyqtSignal()
+    # 定义全屏模式切换信号
+    toggle_fullscreen = pyqtSignal()
 
     def __init__(self):
         """
@@ -31,6 +33,7 @@ class PreviewPanel(QWidget):
         self.current_file_path = None  # 保存当前文件路径
         self.current_preview_panel = None  # 当前预览面板
         self.content_label = None  # 内容显示标签
+        self.is_fullscreen = False  # 全屏模式标志
 
         # 支持的图片格式
         self.supported_image_formats = ['.jpg', '.jpeg', '.png', '.bmp', '.gif']
@@ -61,6 +64,24 @@ class PreviewPanel(QWidget):
 
         layout.addWidget(self.scroll_area)
         self.setLayout(layout)
+
+    def set_fullscreen(self, fullscreen):
+        """
+        设置全屏模式
+
+        Args:
+            fullscreen (bool): 是否进入全屏模式
+        """
+        self.is_fullscreen = fullscreen
+        # 将全屏模式状态传递给当前预览面板（如果有）
+        if self.current_preview_panel:
+            if hasattr(self.current_preview_panel, 'set_fullscreen'):
+                self.current_preview_panel.set_fullscreen(fullscreen)
+
+            # 如果是图片预览面板，在全屏模式下触发一次图片大小的缩放操作
+            if fullscreen and isinstance(self.current_preview_panel, ImagePreviewPanel):
+                # 触发图片重新适应视图大小
+                self.current_preview_panel.image_label.fit_image_to_view()
 
     def preview_file(self, file_path):
         """
@@ -136,6 +157,12 @@ class PreviewPanel(QWidget):
         # 显示图片
         image_preview_panel.show_image_with_annotation(file_path)
 
+        # 如果处于全屏模式，通知图片预览面板
+        if self.is_fullscreen:
+            image_preview_panel.set_fullscreen(True)
+            # 立即触发图片尺寸调整以适应全屏
+            image_preview_panel.image_label.fit_image_to_view()
+
         # 替换显示内容为图片预览面板
         self.scroll_area.setWidget(image_preview_panel)
         self.current_preview_panel = image_preview_panel
@@ -161,6 +188,10 @@ class PreviewPanel(QWidget):
         # 连接信号
         video_preview_panel.switch_to_previous.connect(self.switch_to_previous_resource)
         video_preview_panel.switch_to_next.connect(self.switch_to_next_resource)
+
+        # 如果处于全屏模式，通知视频预览面板
+        if self.is_fullscreen:
+            video_preview_panel.set_fullscreen(True)
 
         # 替换显示内容为视频预览面板
         self.scroll_area.setWidget(video_preview_panel)
@@ -232,10 +263,16 @@ class PreviewPanel(QWidget):
             self.switch_to_previous_resource()
         elif event.key() == Qt.Key_D:
             self.switch_to_next_resource()
+        # 处理F11键切换全屏模式
+        elif event.key() == Qt.Key_F11:
+            self.toggle_fullscreen.emit()
+        # 处理ESC键退出全屏模式
+        elif event.key() == Qt.Key_Escape and self.is_fullscreen:
+            self.toggle_fullscreen.emit()
         # 处理W/Q键的标注模式（转发给当前预览面板）
         elif event.key() in [Qt.Key_W, Qt.Key_Q]:
             # 如果当前有预览面板且是图片预览面板，则转发按键事件
-            if (self.current_preview_panel and 
+            if (self.current_preview_panel and
                 isinstance(self.current_preview_panel, ImagePreviewPanel)):
                 self.current_preview_panel.keyPressEvent(event)
             else:

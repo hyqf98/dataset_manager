@@ -1,9 +1,10 @@
 import os
 
-from PyQt5.QtCore import Qt, QRect, QPoint, QSize
+from PyQt5.QtCore import Qt, QRect, QPoint, QSize, pyqtSignal
+
 from PyQt5.QtGui import QPixmap, QPainter, QPen, QPolygon, QFont, QIcon, QColor
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel, QInputDialog, \
-    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QPushButton, QSizePolicy
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QPushButton, QSizePolicy, QAction, QScrollArea
 
 from src.logging_config import logger
 from src.persist.yolo_utils import save_yolo_annotations, load_yolo_annotations
@@ -198,6 +199,7 @@ class PolygonAnnotation(Annotation):
                     painter.drawEllipse(scaled_point, 3, 3)  # 将控制点大小从5改为3
 
         # 绘制标签
+        # 绘制标签
         if self.label and len(self.points) > 0:
             # 计算多边形的中心点（缩放后）
             scaled_points = []  # 重新计算中心点的缩放点
@@ -329,35 +331,6 @@ class ImageLabel(QLabel):
         # 自动调整缩放因子以适应显示区域
         self.fit_image_to_view()
 
-    def fit_image_to_view(self):
-        """自动调整图片大小以适应视图"""
-        if not self.pixmap or self.pixmap.isNull():
-            return
-
-        # 获取可用显示区域大小
-        available_size = self.get_available_size()
-        if available_size.width() <= 0 or available_size.height() <= 0:
-            return
-
-        # 计算缩放比例
-        scale_x = available_size.width() / self.pixmap.width()
-        scale_y = available_size.height() / self.pixmap.height()
-
-        # 选择较小的缩放比例以确保图片完整显示
-        self.scale_factor = min(scale_x, scale_y)
-
-        # 确保缩放比例不会太大（图片原始大小）
-        if self.scale_factor > 1.0:
-            self.scale_factor = 1.0
-
-        # 设置ImageLabel的大小以匹配缩放后的图片
-        scaled_width = int(self.pixmap.width() * self.scale_factor)
-        scaled_height = int(self.pixmap.height() * self.scale_factor)
-        self.setFixedSize(scaled_width, scaled_height)
-
-        # 更新显示
-        self.update()
-
     def get_available_size(self):
         """获取可用于显示图片的区域大小"""
         # 如果在滚动区域中，获取滚动区域的视口大小
@@ -370,6 +343,59 @@ class ImageLabel(QLabel):
         else:
             # 默认返回一个合理的大小
             return QSize(800, 600)
+
+    def get_screen_resolution_factor(self):
+        """
+        获取屏幕分辨率因子，用于优化图片显示质量
+        根据屏幕DPI和物理尺寸计算合适的缩放因子
+        """
+        try:
+            # 获取当前屏幕
+            screen = self.screen() if hasattr(self, 'screen') else None
+            if screen:
+                # 获取逻辑DPI
+                logical_dpi = screen.logicalDotsPerInch()
+                # 获取物理DPI
+                physical_dpi = screen.physicalDotsPerInch()
+
+                # 计算DPI比率
+                dpi_ratio = physical_dpi / logical_dpi if logical_dpi > 0 else 1.0
+
+                # 返回一个适合的缩放因子
+                # 对于高DPI屏幕，使用更高的分辨率显示图片以提高清晰度
+                return max(1.0, dpi_ratio)
+        except:
+            # 出现异常时返回默认值
+            pass
+        return 1.0
+
+    def fit_image_to_view(self):
+        """自动调整图片大小以适应视图"""
+        if not self.pixmap or self.pixmap.isNull():
+            return
+
+        # 获取可用显示区域大小
+        available_size = self.get_available_size()
+        if available_size.width() <= 0 or available_size.height() <= 0:
+            return
+
+        # 计算缩放比例，使图片适应可用区域（保持宽高比）
+        scale_x = available_size.width() / self.pixmap.width()
+        scale_y = available_size.height() / self.pixmap.height()
+
+        # 使用较小的缩放比例，确保整个图片可见（完整显示）
+        self.scale_factor = min(scale_x, scale_y)
+
+        # 限制最大缩放比例，避免过度放大
+        self.scale_factor = min(self.scale_factor, 5.0)
+
+        # 设置ImageLabel的大小以匹配缩放后的图片
+        scaled_width = int(self.pixmap.width() * self.scale_factor)
+        scaled_height = int(self.pixmap.height() * self.scale_factor)
+        self.setFixedSize(scaled_width, scaled_height)
+
+        # 更新显示
+        self.update()
 
     def resizeEvent(self, event):
         """处理大小改变事件"""
@@ -1168,6 +1194,7 @@ class ImageLabel(QLabel):
         # 创建绘图器
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
 
         # 计算图片左上角对齐的偏移量（始终为0，0）
         x = 0
@@ -1192,6 +1219,7 @@ class ImageLabel(QLabel):
 
             # 绘制半透明背景框
             text = f"标注模式: {self.current_annotation_label}"
+
             text_rect = painter.fontMetrics().boundingRect(text)
             hint_rect = QRect(10, 10, text_rect.width() + 20, text_rect.height() + 10)
             # 使用半透明黄色背景
@@ -1414,17 +1442,15 @@ class ImageLabel(QLabel):
         if available_size.width() <= 0 or available_size.height() <= 0:
             return
 
-
-        # 计算缩放比例
+        # 计算缩放比例，使图片适应可用区域（保持宽高比）
         scale_x = available_size.width() / self.pixmap.width()
         scale_y = available_size.height() / self.pixmap.height()
 
-        # 选择较小的缩放比例以确保图片完整显示
+        # 使用较小的缩放比例，确保整个图片可见（完整显示）
         self.scale_factor = min(scale_x, scale_y)
 
-        # 确保缩放比例不会太大（图片原始大小）
-        if self.scale_factor > 1.0:
-            self.scale_factor = 1.0
+        # 限制最大缩放比例，避免过度放大
+        self.scale_factor = min(self.scale_factor, 5.0)
 
         # 更新显示
         self.update()
@@ -1442,6 +1468,113 @@ class ImageLabel(QLabel):
     def minimumSizeHint(self):
         """返回最小大小"""
         return QSize(200, 150)
+
+
+class ImagePreviewPanel(QWidget):
+    """
+    图片预览面板类，用于显示图片文件并支持标注功能
+    """
+
+    def __init__(self):
+        """
+        初始化图片预览面板
+        """
+        super().__init__()
+        self.current_file_path = None
+        self.is_fullscreen = False  # 添加全屏模式标志
+        self.init_ui()
+
+    def init_ui(self):
+        self.pixmap = QPixmap()
+        self.scale_factor = 1.0
+        self.image_label = QLabel(self)
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setPixmap(self.pixmap)
+        self.image_label.setScaledContents(True)
+        self.image_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidget(self.image_label)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setAlignment(Qt.AlignCenter)
+
+        self.setCentralWidget(self.scroll_area)
+
+        self.zoom_in_action = QAction("Zoom In", self)
+        self.zoom_in_action.setShortcut("Ctrl+=")
+        self.zoom_in_action.triggered.connect(self.zoom_in)
+
+        self.zoom_out_action = QAction("Zoom Out", self)
+        self.zoom_out_action.setShortcut("Ctrl+-")
+        self.zoom_out_action.triggered.connect(self.zoom_out)
+
+        self.reset_zoom_action = QAction("Reset Zoom", self)
+        self.reset_zoom_action.setShortcut("Ctrl+0")
+        self.reset_zoom_action.triggered.connect(self.reset_zoom)
+
+        self.fullscreen_action = QAction("Fullscreen", self)
+        self.fullscreen_action.setShortcut("F11")
+        self.fullscreen_action.triggered.connect(self.toggle_fullscreen)
+
+        self.toolbar = self.addToolBar("Zoom")
+        self.toolbar.addAction(self.zoom_in_action)
+        self.toolbar.addAction(self.zoom_out_action)
+        self.toolbar.addAction(self.reset_zoom_action)
+        self.toolbar.addAction(self.fullscreen_action)
+
+    def load_image(self, file_path):
+        """
+        加载图片文件
+        """
+        self.current_file_path = file_path
+        self.pixmap.load(file_path)
+        self.image_label.setPixmap(self.pixmap)
+        self.image_label.resize(self.pixmap.size())
+
+    def zoom_in(self):
+        """
+        放大图片
+        """
+        self.scale_factor *= 1.25
+        self.image_label.resize(
+            int(self.pixmap.width() * self.scale_factor),
+            int(self.pixmap.height() * self.scale_factor)
+        )
+
+    def zoom_out(self):
+        """
+        缩小图片
+        """
+        self.scale_factor /= 1.25
+        self.image_label.resize(
+            int(self.pixmap.width() * self.scale_factor),
+            int(self.pixmap.height() * self.scale_factor)
+        )
+
+    def reset_zoom(self):
+        """
+        重置图片缩放
+        """
+        self.scale_factor = 1.0
+        self.image_label.resize(self.pixmap.size())
+
+    def toggle_fullscreen(self):
+        """
+        切换全屏模式
+        """
+        self.is_fullscreen = not self.is_fullscreen
+        if self.is_fullscreen:
+            self.showFullScreen()
+        else:
+            self.showNormal()
+
+    def closeEvent(self, event):
+        """
+        处理关闭事件
+        """
+        if self.is_fullscreen:
+            self.showNormal()
+        event.accept()
 
 
 class ImageDetailsPanel(QWidget):
@@ -1723,6 +1856,8 @@ class ImagePreviewPanel(QWidget):
         self.init_ui()
         self.current_pixmap = None  # 保存当前图片的pixmap用于缩放
         self.scale_factor = 1.0  # 缩放因子
+        self.is_fullscreen = False  # 添加全屏模式标志
+        self.current_file_path = None  # 当前文件路径
 
         # 设置焦点策略，确保能接收键盘事件
         self.setFocusPolicy(Qt.StrongFocus)
@@ -1799,7 +1934,7 @@ class ImagePreviewPanel(QWidget):
 
         # 创建快捷键说明标签并添加到工具栏
         from PyQt5.QtWidgets import QLabel
-        self.shortcut_label = QLabel("快捷键: W/Q(标注模式), A/D(前后图片), Delete(删除), Ctrl+滚轮(缩放)")
+        self.shortcut_label = QLabel("快捷键: W/Q(标注模式), A/D(前后图片), Delete(删除), F11(全屏)")
         self.shortcut_label.setStyleSheet("color: gray; font-size: 10px;")
         self.toolbar.addWidget(self.shortcut_label)
         self.toolbar.addStretch()
@@ -1842,6 +1977,19 @@ class ImagePreviewPanel(QWidget):
 
         layout.addWidget(self.main_splitter)
         self.setLayout(layout)
+
+    def set_fullscreen(self, fullscreen):
+        """
+        设置全屏模式
+
+        Args:
+            fullscreen (bool): 是否进入全屏模式
+        """
+        self.is_fullscreen = fullscreen
+        # 如果进入全屏模式，触发图片重新适应视图大小
+        if fullscreen:
+            # 触发图片重新适应视图大小
+            self.image_label.fit_image_to_view()
 
     def show_image_with_annotation(self, file_path):
         """
