@@ -1,4 +1,34 @@
-PyQt5>=5.15.0
+# 数据集管理器依赖文件
+# 所有平台通用依赖
+
+PyQt5>=5.15.0,<5.15.12  # 限制版本范围以避免兼容性问题
 opencv-python>=4.12.0.88
 ultralytics>=8.3.0
 openai>=1.50.0
+
+# 不同操作系统的安装说明：
+#
+# Windows:
+#   直接运行 pip install -r requirements.txt 即可
+#   如果使用 uv 时遇到兼容性问题，可以尝试:
+#   uv sync --python-platform win32
+#
+#   注意：在某些Windows系统上，可能需要安装Microsoft C++ Build Tools
+#
+# macOS:
+#   如果遇到 PyQt5 安装问题，可以尝试：
+#   brew install pyqt5
+#   或者使用 conda: conda install pyqt
+#
+# Linux:
+#   在运行 pip install 之前，建议先安装系统依赖：
+#   Ubuntu/Debian:
+#     sudo apt-get update
+#     sudo apt-get install python3-pyqt5 libgl1-mesa-glx libglib2.0-0 python3-dev
+#   
+#   CentOS/RHEL/Fedora:
+#     sudo yum install python3-qt5 mesa-libGL glib2-devel python3-devel
+#     (Fedora 用户可使用 dnf 替代 yum)
+#
+#   如果遇到 opencv-python 安装问题，可以尝试：
+#   sudo apt-get install python3-opencv

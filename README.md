@@ -30,20 +30,85 @@
 
 ## 安装依赖
 
+### 推荐使用 uv（更快的包管理器）
+```bash
+# 首次安装依赖
+uv sync
+
+# 如果遇到平台兼容性问题
+uv sync --python-platform win32
+```
+
+### 传统方式安装
 ```bash
 pip install -r requirements.txt
 ```
 
-或者使用 uv:
+### 不同操作系统的安装说明
 
+#### Windows
+使用 uv 安装（推荐）：
 ```bash
 uv sync
 ```
 
+如果遇到 PyQt5 兼容性问题，可以尝试：
+```bash
+uv sync --python-platform win32
+```
+
+传统 pip 安装：
+```bash
+pip install -r requirements.txt
+```
+
+注意：在某些Windows系统上，可能需要安装Microsoft C++ Build Tools
+
+#### macOS
+如果遇到 PyQt5 安装问题，可以尝试：
+```bash
+brew install pyqt5
+```
+或者使用 conda:
+```bash
+conda install pyqt
+```
+
+#### Linux
+在运行 pip install 之前，建议先安装系统依赖：
+
+Ubuntu/Debian:
+```bash
+sudo apt-get update
+sudo apt-get install python3-pyqt5 libgl1-mesa-glx libglib2.0-0 python3-dev
+```
+
+CentOS/RHEL/Fedora:
+```bash
+sudo yum install python3-qt5 mesa-libGL glib2-devel python3-devel
+# Fedora 用户可使用 dnf 替代 yum
+```
+
+如果遇到 opencv-python 安装问题，可以尝试：
+```bash
+sudo apt-get install python3-opencv
+```
+
 ## 运行应用
 
+### 使用 uv 运行（推荐）
+```bash
+uv run main.py
+```
+
+### 使用 Python 直接运行
 ```bash
 python main.py
+```
+
+如果使用 uv 时遇到平台兼容性问题，可以尝试指定平台：
+```bash
+uv run --python-platform win32 main.py
 ```
 
 ## 使用说明
