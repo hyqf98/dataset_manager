@@ -243,7 +243,6 @@ class PolygonData:
 
 
 class ImageLabel(QLabel):
-
     # 全局标注模式状态
     global_annotation_mode = False
     global_annotation_label = ""
@@ -251,6 +250,7 @@ class ImageLabel(QLabel):
     def __init__(self):
         super().__init__()
         self.pixmap = None
+        self.scaled_pixmap = None  # 添加缓存的缩放图片
         self.mode = 'rectangle'  # 默认模式为矩形模式
         self.scale_factor = 1.0  # 添加缩放因子属性，用于控制图片缩放级别
         self.zoom_count = 0  # 添加缩放计数器，用于限制缩放次数
@@ -344,30 +344,31 @@ class ImageLabel(QLabel):
             # 默认返回一个合理的大小
             return QSize(800, 600)
 
-    def get_screen_resolution_factor(self):
-        """
-        获取屏幕分辨率因子，用于优化图片显示质量
-        根据屏幕DPI和物理尺寸计算合适的缩放因子
-        """
-        try:
-            # 获取当前屏幕
-            screen = self.screen() if hasattr(self, 'screen') else None
-            if screen:
-                # 获取逻辑DPI
-                logical_dpi = screen.logicalDotsPerInch()
-                # 获取物理DPI
-                physical_dpi = screen.physicalDotsPerInch()
+    def update_auto_scale_factor(self):
+        """更新自动缩放因子以适应视图"""
+        if not self.pixmap or self.pixmap.isNull():
+            return
 
-                # 计算DPI比率
-                dpi_ratio = physical_dpi / logical_dpi if logical_dpi > 0 else 1.0
+        # 获取可用显示区域大小
+        available_size = self.get_available_size()
+        if available_size.width() <= 0 or available_size.height() <= 0:
+            return
 
-                # 返回一个适合的缩放因子
-                # 对于高DPI屏幕，使用更高的分辨率显示图片以提高清晰度
-                return max(1.0, dpi_ratio)
-        except:
-            # 出现异常时返回默认值
-            pass
-        return 1.0
+        # 计算缩放比例，使图片适应可用区域（保持宽高比）
+        scale_x = available_size.width() / self.pixmap.width()
+        scale_y = available_size.height() / self.pixmap.height()
+
+        # 使用较小的缩放比例，确保整个图片可见（完整显示）
+        self.scale_factor = min(scale_x, scale_y)
+
+        # 限制最大缩放比例，避免过度放大
+        self.scale_factor = min(self.scale_factor, 5.0)
+
+        # 更新缩放图片缓存
+        self.update_scaled_pixmap()
+
+        # 更新显示
+        self.update()
 
     def fit_image_to_view(self):
         """自动调整图片大小以适应视图"""
@@ -389,6 +390,9 @@ class ImageLabel(QLabel):
         # 限制最大缩放比例，避免过度放大
         self.scale_factor = min(self.scale_factor, 5.0)
 
+        # 生成高质量缩放后的图片缓存
+        self.update_scaled_pixmap()
+
         # 设置ImageLabel的大小以匹配缩放后的图片
         scaled_width = int(self.pixmap.width() * self.scale_factor)
         scaled_height = int(self.pixmap.height() * self.scale_factor)
@@ -397,12 +401,61 @@ class ImageLabel(QLabel):
         # 更新显示
         self.update()
 
+    def update_scaled_pixmap(self):
+        """生成高质量缩放后的图片缓存，并设置正确的devicePixelRatio"""
+        if not self.pixmap or self.pixmap.isNull():
+            self.scaled_pixmap = None
+            return
+
+        # 计算缩放后的尺寸
+        scaled_width = int(self.pixmap.width() * self.scale_factor)
+        scaled_height = int(self.pixmap.height() * self.scale_factor)
+
+        # 生成高质量缩放后的图片
+        self.scaled_pixmap = self.pixmap.scaled(
+            scaled_width,
+            scaled_height,
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation
+        )
+        
+        # 设置正确的devicePixelRatio
+        self.scaled_pixmap.setDevicePixelRatio(self.devicePixelRatio())
+
     def resizeEvent(self, event):
         """处理大小改变事件"""
         # 重新调整图片以适应新的视图大小
         self.fit_image_to_view()
         super().resizeEvent(event)
         self.update()
+
+    def wheelEvent(self, event):
+        """处理鼠标滚轮事件，支持图片缩放"""
+        if event.modifiers() == Qt.ControlModifier:
+            # Ctrl+滚轮进行缩放
+            if event.angleDelta().y() > 0:
+                # 放大
+                self.scale_factor *= 1.1
+            else:
+                # 缩小
+                self.scale_factor /= 1.1
+
+            # 限制缩放范围
+            self.scale_factor = max(0.1, min(self.scale_factor, 10.0))
+            
+            # 更新缩放图片缓存
+            self.update_scaled_pixmap()
+            
+            # 更新图片标签大小
+            if self.pixmap:
+                scaled_width = int(self.pixmap.width() * self.scale_factor)
+                scaled_height = int(self.pixmap.height() * self.scale_factor)
+                self.setFixedSize(scaled_width, scaled_height)
+            
+            self.update()
+        else:
+            # 普通滚轮事件交给父类处理（滚动视图）
+            super().wheelEvent(event)
 
     def load_yolo_annotations(self):
         """加载YOLO格式的标注文件"""
@@ -1200,8 +1253,11 @@ class ImageLabel(QLabel):
         x = 0
         y = 0
 
-        if self.pixmap and not self.pixmap.isNull():
-            # 绘制图像（支持缩放）
+        if self.scaled_pixmap and not self.scaled_pixmap.isNull():
+            # 直接绘制预缩放的图片，避免在paintEvent中实时缩放
+            painter.drawPixmap(x, y, self.scaled_pixmap)
+        elif self.pixmap and not self.pixmap.isNull():
+            # 如果没有预缩放的图片，使用旧的方式（后备方案）
             scaled_pixmap = self.pixmap.scaled(
                 int(self.pixmap.width() * self.scale_factor),
                 int(self.pixmap.height() * self.scale_factor),
@@ -1371,6 +1427,7 @@ class ImageLabel(QLabel):
     def set_image(self, file_path):
         self.file_path = file_path
         self.pixmap = QPixmap(file_path)
+        self.scaled_pixmap = None  # 清除缓存的缩放图片
         self.scale_factor = 1.0  # 重置缩放因子
         self.zoom_count = 0  # 重置缩放计数器
 
