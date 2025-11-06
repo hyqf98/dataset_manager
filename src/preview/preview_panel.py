@@ -1,4 +1,5 @@
 import os
+import traceback
 
 from PyQt5 import sip
 from PyQt5.QtCore import Qt, pyqtSignal
@@ -24,11 +25,19 @@ class PreviewPanel(QWidget):
     # 定义全屏模式切换信号
     toggle_fullscreen = pyqtSignal()
 
-    def __init__(self):
+    def __init__(self, width=None, height=None):
         """
         初始化预览面板
+
+        Args:
+            width (int, optional): 面板宽度
+            height (int, optional): 面板高度
         """
         super().__init__()
+        # 存储尺寸参数作为内部属性
+        self.panel_width = width
+        self.panel_height = height
+
         self.init_ui()
         self.current_file_path = None  # 保存当前文件路径
         self.current_preview_panel = None  # 当前预览面板
@@ -58,9 +67,12 @@ class PreviewPanel(QWidget):
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scroll_area.setAlignment(Qt.AlignCenter)
 
-        # 设置滚动区域的最小尺寸
-        self.scroll_area.setMinimumWidth(600)
-        self.scroll_area.setMinimumHeight(500)
+        # 如果有尺寸参数，则设置滚动区域的尺寸
+        if self.panel_width is not None and self.panel_height is not None:
+            self.scroll_area.setMinimumWidth(self.panel_width)
+            self.scroll_area.setMinimumHeight(self.panel_height)
+            self.setMinimumWidth(self.panel_width)
+            self.setMinimumHeight(self.panel_height)
 
         layout.addWidget(self.scroll_area)
         self.setLayout(layout)
@@ -151,8 +163,12 @@ class PreviewPanel(QWidget):
         Args:
             file_path (str): 图片文件路径
         """
-        # 创建新的图片预览面板
-        image_preview_panel = ImagePreviewPanel()
+        # 获取当前预览面板的尺寸
+        width = self.width()
+        height = self.height()
+
+        # 创建新的图片预览面板，传递尺寸参数
+        image_preview_panel = ImagePreviewPanel(width=width, height=height)
 
         # 显示图片
         image_preview_panel.show_image_with_annotation(file_path)

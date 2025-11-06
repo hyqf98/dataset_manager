@@ -72,23 +72,23 @@ class FileManagerProxyModel(QSortFilterProxyModel):
                 # 使用os.path.normpath标准化路径，处理不同操作系统的路径分隔符
                 normalized_current_path = os.path.normpath(current_path)
                 normalized_root_path = os.path.normpath(root_path)
-                
+
                 # 转换为统一的正斜杠格式，便于比较
                 normalized_current_path = normalized_current_path.replace(os.sep, "/")
                 normalized_root_path = normalized_root_path.replace(os.sep, "/")
-                
+
                 # 确保路径以斜杠结尾，便于准确比较
                 if not normalized_root_path.endswith("/"):
                     normalized_root_path += "/"
-                
+
                 # 检查是否是根路径本身
                 if normalized_current_path == normalized_root_path.rstrip("/"):
                     return True
-                    
+
                 # 检查是否在根路径之下（确保是完整的路径匹配）
                 if normalized_current_path.startswith(normalized_root_path):
                     return True
-                    
+
                 # 检查是否是根路径的父目录（允许显示根路径的父目录以便导航）
                 if normalized_root_path.startswith(normalized_current_path + "/") or \
                    normalized_root_path == normalized_current_path + "/":
@@ -286,12 +286,18 @@ class FileManagerUI(QWidget):
     # 定义拖拽操作信号
     file_dropped = pyqtSignal(str, str)  # 源文件路径, 目标文件夹路径
 
-    def __init__(self):
+    def __init__(self, width=None, height=None):
         """
         初始化文件管理器UI
+
+        Args:
+            width (int, optional): 面板宽度
+            height (int, optional): 面板高度
         """
         try:
             super().__init__()
+            self.panel_width = width
+            self.panel_height = height
             self.tree_view = None
             self.model = None
             self.proxy_model = None  # 代理模型
@@ -308,26 +314,28 @@ class FileManagerUI(QWidget):
 
     def init_ui(self):
         """
-        初始化文件管理器用户界面
+        初始化文件管理器UI
         """
         try:
-            # 创建主布局
             main_layout = QVBoxLayout(self)
-            self.setAcceptDrops(True)  # 允许接收拖拽事件
 
-            # 创建顶部按钮布局
+            # 创建按钮布局
             button_layout = QHBoxLayout()
 
-            # 创建按钮
-            self.import_btn = QPushButton("📁 选择文件夹")
-            self.remove_btn = QPushButton("🗑️ 移除文件夹")
-            self.recycle_bin_btn = QPushButton("🗑️ 回收站")
-            self.refresh_btn = QPushButton("🔄 刷新")
-
-            # 设置按钮样式
+            # 创建导入文件夹按钮
+            self.import_btn = QPushButton("📁 导入文件夹")
             self.import_btn.setStyleSheet(self.get_button_style())
+
+            # 创建移除文件夹按钮
+            self.remove_btn = QPushButton("🗑️ 移除文件夹")
             self.remove_btn.setStyleSheet(self.get_button_style())
+
+            # 创建回收站按钮
+            self.recycle_bin_btn = QPushButton("🗑️ 回收站")
             self.recycle_bin_btn.setStyleSheet(self.get_button_style())
+
+            # 创建刷新按钮
+            self.refresh_btn = QPushButton("🔄 刷新")
             self.refresh_btn.setStyleSheet(self.get_button_style())
 
             # 添加按钮到布局
@@ -394,15 +402,30 @@ class FileManagerUI(QWidget):
             self.tree_view.dragMoveEvent = self.handle_drag_move
             self.tree_view.dropEvent = self.handle_drop
 
-            # 设置列宽
-            self.tree_view.setColumnWidth(0, 150)  # 名称列
-            self.tree_view.setColumnWidth(1, 100)  # 大小列
-            self.tree_view.setColumnWidth(2, 50)  # 类型列
-            self.tree_view.setColumnWidth(3, 150)  # 修改时间列
+            # 如果有尺寸参数，则设置面板尺寸
+            if self.panel_width is not None and self.panel_height is not None:
+                # 设置面板的最小尺寸和固定尺寸
+                self.setMinimumWidth(self.panel_width)
+                self.setMinimumHeight(self.panel_height)
+                self.resize(self.panel_width, self.panel_height)
 
-            # 增加整体最小尺寸
-            self.tree_view.setMinimumWidth(400)
-            self.tree_view.setMinimumHeight(500)
+                # 设置树视图的最小尺寸
+                self.tree_view.setMinimumWidth(self.panel_width)
+                self.tree_view.setMinimumHeight(self.panel_height - 150)  # 为按钮和搜索框留出空间
+
+                # 根据面板宽度设置文件树列宽
+                if self.panel_width > 0:
+                    # 计算各列的宽度比例
+                    name_column_width = int(self.panel_width * 0.4)   # 名称列占40%
+                    size_column_width = int(self.panel_width * 0.2)   # 大小列占20%
+                    type_column_width = int(self.panel_width * 0.15)  # 类型列占15%
+                    date_column_width = int(self.panel_width * 0.25)  # 修改时间列占25%
+
+                    # 设置列宽
+                    self.tree_view.setColumnWidth(0, name_column_width)   # 名称列
+                    self.tree_view.setColumnWidth(1, size_column_width)   # 大小列
+                    self.tree_view.setColumnWidth(2, type_column_width)   # 类型列
+                    self.tree_view.setColumnWidth(3, date_column_width)   # 修改时间列
 
             # 添加控件到主布局
             main_layout.addLayout(button_layout)
@@ -411,10 +434,6 @@ class FileManagerUI(QWidget):
             main_layout.addWidget(self.tree_view)
 
             self.setLayout(main_layout)
-
-            # 设置面板的最小尺寸
-            self.setMinimumWidth(400)
-            self.setMinimumHeight(500)
         except Exception as e:
             logger.error(f"初始化UI时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -1266,23 +1285,27 @@ class FileManagerPanel(QWidget):
     文件管理面板类，负责显示文件树和管理文件操作
     """
 
-    def __init__(self):
+    def __init__(self, width=None, height=None):
         """
         初始化文件管理面板
+
+        Args:
+            width (int, optional): 面板宽度
+            height (int, optional): 面板高度
         """
         super().__init__()
-        try:
-            self.events = FileManagerEvents()
-            self.delete_folder = "delete"  # 回收站文件夹名
-            self.imported_root_paths = []  # 保存导入的根路径列表
-            self.drag_source_path = None  # 保存拖拽源路径
-            self.init_ui()
-            # 自动加载持久化路径，确保用户重启后能看到上次导入的文件夹内容
-            self.load_persistent_paths()
-        except Exception as e:
-            logger.error(f"FileManagerPanel初始化时发生异常: {str(e)}")
-            logger.error(f"异常详情:\n{traceback.format_exc()}")
-            raise
+        # 存储尺寸参数作为内部属性
+        self.panel_width = width
+        self.panel_height = height
+
+        self.events = FileManagerEvents()
+        self.delete_folder = "delete"  # 回收站文件夹名
+        self.imported_root_paths = []  # 保存导入的根路径列表
+        self.drag_source_path = None  # 保存拖拽源路径
+        self.init_ui()
+
+        # 自动加载持久化路径，确保用户重启后能看到上次导入的文件夹内容
+        self.load_persistent_paths()
 
     def init_ui(self):
         """
@@ -1291,8 +1314,8 @@ class FileManagerPanel(QWidget):
         try:
             layout = QVBoxLayout(self)
 
-            # 使用专门的UI类
-            self.ui = FileManagerUI()
+            # 使用专门的UI类，传递尺寸参数
+            self.ui = FileManagerUI(width=self.panel_width, height=self.panel_height)
 
             # 连接按钮事件
             self.ui.import_btn.clicked.connect(self.import_folders)

@@ -66,9 +66,15 @@ class MainWindow(QMainWindow):
             central_widget = QWidget()
             self.setCentralWidget(central_widget)
 
-            # 创建文件管理面板和预览面板
-            self.file_manager_panel = FileManagerPanel()
-            self.preview_panel = PreviewPanel()
+            # 计算面板尺寸
+            total_width = window_width - 20  # 窗口宽度减去一些边距
+            left_width = int(total_width * 0.20)    # 20%宽度给左侧文件管理面板
+            right_width = int(total_width * 0.80)   # 80%宽度给右侧预览面板
+            panel_height = window_height - 100
+
+            # 创建文件管理面板和预览面板，通过构造函数传递尺寸参数
+            self.file_manager_panel = FileManagerPanel(width=left_width, height=panel_height)
+            self.preview_panel = PreviewPanel(width=right_width, height=panel_height)
 
             # 连接文件管理器和预览面板
             self.setup_connections()
@@ -82,9 +88,6 @@ class MainWindow(QMainWindow):
 
             # 设置各面板的初始大小比例为1:2
             # 通过设置合适的初始尺寸来实现比例分配
-            total_width = window_width - 20  # 窗口宽度减去一些边距
-            left_width = int(total_width * 0.10)    # 20%宽度给左侧文件管理面板
-            right_width = int(total_width * 0.90)   # 80%宽度给右侧预览面板
             splitter.setSizes([left_width, right_width])
 
             # 创建主布局并添加分割器
@@ -98,6 +101,33 @@ class MainWindow(QMainWindow):
             logger.error(f"初始化主窗口UI时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             raise
+
+    def resizeEvent(self, event):
+        """
+        处理窗口大小调整事件
+        
+        Args:
+            event: 窗口大小调整事件
+        """
+        try:
+            # 获取当前窗口尺寸
+            window_width = self.width()
+            window_height = self.height()
+            
+            # 计算面板尺寸
+            total_width = window_width - 20  # 窗口宽度减去一些边距
+            left_width = int(total_width * 0.20)    # 20%宽度给左侧文件管理面板
+            right_width = int(total_width * 0.80)   # 80%宽度给右侧预览面板
+            panel_height = window_height - 100
+            
+            # 注意：由于我们已经移除了set_panel_size方法，这里不再调用它
+            # 面板尺寸在构造时已经设置，窗口大小变化时保持比例
+            
+            super().resizeEvent(event)
+        except Exception as e:
+            logger.error(f"处理窗口大小调整事件时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            super().resizeEvent(event)
 
     def setup_connections(self):
         """
@@ -438,3 +468,17 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"窗口显示事件处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+

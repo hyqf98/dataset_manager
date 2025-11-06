@@ -332,46 +332,48 @@ class ImageLabel(QLabel):
         self.fit_image_to_view()
 
     def get_available_size(self):
-        """获取可用于显示图片的区域大小"""
+        """获取可用于显示图片的区域大小，考虑详情面板占用的宽度"""
         # 如果在滚动区域中，获取滚动区域的视口大小
         if self.parent() and hasattr(self.parent(), 'viewport'):
             viewport = self.parent().viewport()
+            # 获取父级图片预览面板的宽度
+            parent_width = viewport.width()
+            parent_height = viewport.height()
+
+            # 如果存在图片预览面板父级，需要考虑详情面板占用的宽度
+            # 查找图片预览面板父级
+            image_preview_panel = None
+            parent = self.parent()
+            while parent:
+                if parent.objectName() == "image_container" or (hasattr(parent, 'metaObject') and
+                                                                parent.metaObject().className() == "ImagePreviewPanel"):
+                    image_preview_panel = parent
+                    break
+                parent = parent.parent()
+
+            # 如果找到了图片预览面板，需要减去详情面板的宽度
+            if image_preview_panel and hasattr(image_preview_panel, 'parent') and image_preview_panel.parent():
+                # 获取主分割器
+                main_splitter = image_preview_panel.parent()
+                if main_splitter and hasattr(main_splitter, 'sizes'):
+                    sizes = main_splitter.sizes()
+                    if len(sizes) >= 2:
+                        # 图片容器宽度是第一个，详情面板宽度是第二个
+                        image_container_width = sizes[0]
+                        details_panel_width = sizes[1]
+                        # 使用图片容器宽度作为可用宽度
+                        parent_width = image_container_width - 20  # 留出一些边距
+
             # 留出一些边距
-            return QSize(viewport.width() - 20, viewport.height() - 20)
+            return QSize(parent_width - 20, parent_height - 20)
         elif self.parent():
             return self.parent().size()
         else:
             # 默认返回一个合理的大小
             return QSize(800, 600)
 
-    def update_auto_scale_factor(self):
-        """更新自动缩放因子以适应视图"""
-        if not self.pixmap or self.pixmap.isNull():
-            return
-
-        # 获取可用显示区域大小
-        available_size = self.get_available_size()
-        if available_size.width() <= 0 or available_size.height() <= 0:
-            return
-
-        # 计算缩放比例，使图片适应可用区域（保持宽高比）
-        scale_x = available_size.width() / self.pixmap.width()
-        scale_y = available_size.height() / self.pixmap.height()
-
-        # 使用较小的缩放比例，确保整个图片可见（完整显示）
-        self.scale_factor = min(scale_x, scale_y)
-
-        # 限制最大缩放比例，避免过度放大
-        self.scale_factor = min(self.scale_factor, 5.0)
-
-        # 更新缩放图片缓存
-        self.update_scaled_pixmap()
-
-        # 更新显示
-        self.update()
-
     def fit_image_to_view(self):
-        """自动调整图片大小以适应视图"""
+        """自动调整图片大小以适应视图，考虑高分辨率屏幕和详情面板宽度"""
         if not self.pixmap or self.pixmap.isNull():
             return
 
@@ -418,9 +420,9 @@ class ImageLabel(QLabel):
             Qt.KeepAspectRatio,
             Qt.SmoothTransformation
         )
-        
-        # 设置正确的devicePixelRatio
-        self.scaled_pixmap.setDevicePixelRatio(self.devicePixelRatio())
+
+        # 设置正确的devicePixelRatio以适应高分辨率屏幕
+        self.scaled_pixmap.setDevicePixelRatio(self.devicePixelRatioF())
 
     def resizeEvent(self, event):
         """处理大小改变事件"""
@@ -442,16 +444,16 @@ class ImageLabel(QLabel):
 
             # 限制缩放范围
             self.scale_factor = max(0.1, min(self.scale_factor, 10.0))
-            
+
             # 更新缩放图片缓存
             self.update_scaled_pixmap()
-            
+
             # 更新图片标签大小
             if self.pixmap:
                 scaled_width = int(self.pixmap.width() * self.scale_factor)
                 scaled_height = int(self.pixmap.height() * self.scale_factor)
                 self.setFixedSize(scaled_width, scaled_height)
-            
+
             self.update()
         else:
             # 普通滚轮事件交给父类处理（滚动视图）
@@ -1905,11 +1907,19 @@ class ImagePreviewPanel(QWidget):
     图片预览面板类，专门用于显示图片文件的内容和标注功能
     """
 
-    def __init__(self):
+    def __init__(self, width=None, height=None):
         """
         初始化图片预览面板
+
+        Args:
+            width (int, optional): 面板宽度
+            height (int, optional): 面板高度
         """
         super().__init__()
+        # 存储尺寸参数作为内部属性
+        self.panel_width = width
+        self.panel_height = height
+
         self.init_ui()
         self.current_pixmap = None  # 保存当前图片的pixmap用于缩放
         self.scale_factor = 1.0  # 缩放因子
@@ -1929,9 +1939,23 @@ class ImagePreviewPanel(QWidget):
         # 创建主分割器
         self.main_splitter = QSplitter(Qt.Horizontal)
 
-        # 设置分割器的最小尺寸
-        self.main_splitter.setMinimumWidth(800)
-        self.main_splitter.setMinimumHeight(600)
+        # 如果有尺寸参数，则设置分割器的尺寸
+        if self.panel_width is not None and self.panel_height is not None:
+            self.main_splitter.setMinimumWidth(self.panel_width)
+            self.main_splitter.setMinimumHeight(self.panel_height)
+
+            # 计算图片容器和详情面板的宽度分配
+            # 考虑到详情面板需要一定的宽度来显示信息，我们给它20%的空间
+            image_container_width = int(self.panel_width * 0.8)  # 80%宽度给图片容器
+            details_panel_width = int(self.panel_width * 0.2)  # 20%宽度给详情面板
+
+            # 确保详情面板有最小宽度
+            if details_panel_width < 200:
+                details_panel_width = 200
+                image_container_width = self.panel_width - details_panel_width
+
+            # 设置分割器大小
+            self.main_splitter.setSizes([image_container_width, details_panel_width])
 
         # 创建左侧面板（图片标注）
         self.image_container = QWidget()
@@ -2034,6 +2058,42 @@ class ImagePreviewPanel(QWidget):
 
         layout.addWidget(self.main_splitter)
         self.setLayout(layout)
+
+    def set_panel_size(self, width, height):
+        """
+        设置面板尺寸
+
+        Args:
+            width (int): 面板宽度
+            height (int): 面板高度
+        """
+        try:
+            # 设置主分割器的尺寸
+            self.main_splitter.setMinimumWidth(width)
+            self.main_splitter.setMinimumHeight(height)
+            self.main_splitter.resize(width, height)
+
+            # 计算图片容器和详情面板的宽度分配
+            # 考虑到详情面板需要一定的宽度来显示信息，我们给它20%的空间
+            image_container_width = int(width * 0.8)  # 80%宽度给图片容器
+            details_panel_width = int(width * 0.2)  # 20%宽度给详情面板
+
+            # 确保详情面板有最小宽度
+            if details_panel_width < 200:
+                details_panel_width = 200
+                image_container_width = width - details_panel_width
+
+            # 设置分割器大小
+            self.main_splitter.setSizes([image_container_width, details_panel_width])
+
+            # 触发图片重新适应视图大小
+            if hasattr(self, 'image_label') and self.image_label:
+                self.image_label.fit_image_to_view()
+
+            logger.debug(f"设置图片预览面板尺寸: {width}x{height}")
+        except Exception as e:
+            logger.error(f"设置图片预览面板尺寸时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
 
     def set_fullscreen(self, fullscreen):
         """
