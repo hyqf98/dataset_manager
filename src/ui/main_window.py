@@ -2,7 +2,8 @@ import os
 import traceback
 
 from PyQt5.QtCore import Qt, QEvent
-from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QSplitter, QMessageBox, QApplication, QDialog, QMenuBar, QAction, QFileDialog
+from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QSplitter, QMessageBox, QApplication, QDialog, QMenuBar, QAction, QFileDialog, QMenu
+from PyQt5.QtGui import QKeyEvent
 
 from ..file_manager.file_manager_panel import FileManagerPanel
 from ..logging_config import logger
@@ -12,7 +13,10 @@ from ..preview.live_preview_panel import LivePreviewPanel
 from ..auto_annotation.model_config_panel import ModelConfigPanel
 from ..auto_annotation.auto_annotation_panel import AutoAnnotationPanel
 from ..dataset_split.dataset_split_panel import DatasetSplitPanel
-
+# 添加远程服务器相关导入
+from ..remote_server.server_config_panel import ServerConfigPanel
+from ..remote_server.file_transfer_dialog import FileTransferDialog
+from ..remote_server.server_config import ServerConfigManager, ServerConfig
 
 class MainWindow(QMainWindow):
     """
@@ -29,6 +33,7 @@ class MainWindow(QMainWindow):
             super().__init__()
             self.fullscreen_mode = False  # 添加全屏模式标志
             self.left_panel_visible = True  # 左侧面板可见性
+            self.server_config_manager = ServerConfigManager()  # 服务器配置管理器
             self.init_ui()
             logger.info("主窗口初始化完成")
         except Exception as e:
@@ -43,21 +48,25 @@ class MainWindow(QMainWindow):
         try:
             # 获取屏幕分辨率并设置窗口尺寸为屏幕的95%
             screen = QApplication.primaryScreen()
-            screen_geometry = screen.availableGeometry()
-            screen_width = screen_geometry.width()
-            screen_height = screen_geometry.height()
+            window_width = 800  # 默认宽度
+            window_height = 600  # 默认高度
+            
+            if screen:
+                screen_geometry = screen.availableGeometry()
+                screen_width = screen_geometry.width()
+                screen_height = screen_geometry.height()
 
-            window_width = int(screen_width * 0.95)
-            window_height = int(screen_height * 0.95)
+                window_width = int(screen_width * 0.95)
+                window_height = int(screen_height * 0.95)
 
-            # 设置窗口标题和尺寸，居中显示
-            self.setWindowTitle('数据集管理器')
-            self.setGeometry(
-                (screen_width - window_width) // 2,
-                (screen_height - window_height) // 2,
-                window_width,
-                window_height
-            )
+                # 设置窗口标题和尺寸，居中显示
+                self.setWindowTitle('数据集管理器')
+                self.setGeometry(
+                    (screen_width - window_width) // 2,
+                    (screen_height - window_height) // 2,
+                    window_width,
+                    window_height
+                )
 
             # 创建菜单栏
             self.create_menu_bar()
@@ -80,7 +89,7 @@ class MainWindow(QMainWindow):
             self.setup_connections()
 
             # 创建分割器实现两栏布局，调整比例为1:2
-            splitter = QSplitter(Qt.Horizontal)
+            splitter = QSplitter(Qt.Orientation.Horizontal)  # type: ignore
 
             # 添加面板到分割器
             splitter.addWidget(self.file_manager_panel)
@@ -102,12 +111,12 @@ class MainWindow(QMainWindow):
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             raise
 
-    def resizeEvent(self, event):
+    def resizeEvent(self, a0):  # type: ignore
         """
         处理窗口大小调整事件
         
         Args:
-            event: 窗口大小调整事件
+            a0: 窗口大小调整事件
         """
         try:
             # 获取当前窗口尺寸
@@ -123,11 +132,11 @@ class MainWindow(QMainWindow):
             # 注意：由于我们已经移除了set_panel_size方法，这里不再调用它
             # 面板尺寸在构造时已经设置，窗口大小变化时保持比例
             
-            super().resizeEvent(event)
+            super().resizeEvent(a0)
         except Exception as e:
             logger.error(f"处理窗口大小调整事件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
-            super().resizeEvent(event)
+            super().resizeEvent(a0)
 
     def setup_connections(self):
         """
@@ -160,35 +169,47 @@ class MainWindow(QMainWindow):
         """
         try:
             menubar = self.menuBar()
+            if menubar:
+                # 数据源菜单
+                data_source_menu = menubar.addMenu('数据源')
+                if data_source_menu:
+                    data_source_action = QAction('数据源管理', self)
+                    data_source_action.triggered.connect(self.open_data_source_panel)
+                    data_source_menu.addAction(data_source_action)
 
-            # 数据源菜单
-            data_source_menu = menubar.addMenu('数据源')
-            data_source_action = QAction('数据源管理', self)
-            data_source_action.triggered.connect(self.open_data_source_panel)
-            data_source_menu.addAction(data_source_action)
+                # 自动标注菜单
+                auto_annotation_menu = menubar.addMenu('自动标注')
+                if auto_annotation_menu:
+                    model_config_action = QAction('模型配置', self)
+                    model_config_action.triggered.connect(self.open_model_config_panel)
+                    auto_annotation_menu.addAction(model_config_action)
+                    
+                    auto_annotation_action = QAction('自动标注', self)
+                    auto_annotation_action.triggered.connect(self.open_auto_annotation_panel)
+                    auto_annotation_menu.addAction(auto_annotation_action)
 
-            # 自动标注菜单
-            auto_annotation_menu = menubar.addMenu('自动标注')
-            model_config_action = QAction('模型配置', self)
-            model_config_action.triggered.connect(self.open_model_config_panel)
-            auto_annotation_menu.addAction(model_config_action)
-            
-            auto_annotation_action = QAction('自动标注', self)
-            auto_annotation_action.triggered.connect(self.open_auto_annotation_panel)
-            auto_annotation_menu.addAction(auto_annotation_action)
+                # 数据集划分菜单
+                dataset_split_menu = menubar.addMenu('数据集划分')
+                if dataset_split_menu:
+                    dataset_split_action = QAction('数据集划分', self)
+                    dataset_split_action.triggered.connect(self.open_dataset_split_panel)
+                    dataset_split_menu.addAction(dataset_split_action)
 
-            # 数据集划分菜单
-            dataset_split_menu = menubar.addMenu('数据集划分')
-            dataset_split_action = QAction('数据集划分', self)
-            dataset_split_action.triggered.connect(self.open_dataset_split_panel)
-            dataset_split_menu.addAction(dataset_split_action)
+                # 文件上传菜单
+                file_upload_menu = menubar.addMenu('文件上传')
+                if file_upload_menu:
+                    server_management_action = QAction('服务器管理', self)
+                    server_management_action.triggered.connect(self.open_server_config_panel)
+                    file_upload_menu.addAction(server_management_action)
+                    # 移除上传和下载菜单项
 
-            # 视图菜单
-            view_menu = menubar.addMenu('视图')
-            fullscreen_action = QAction('全屏模式', self)
-            fullscreen_action.setShortcut('F11')
-            fullscreen_action.triggered.connect(self.toggle_fullscreen_mode)
-            view_menu.addAction(fullscreen_action)
+                # 视图菜单
+                view_menu = menubar.addMenu('视图')
+                if view_menu:
+                    fullscreen_action = QAction('全屏模式', self)
+                    fullscreen_action.setShortcut('F11')
+                    fullscreen_action.triggered.connect(self.toggle_fullscreen_mode)
+                    view_menu.addAction(fullscreen_action)
         except Exception as e:
             logger.error(f"创建菜单栏时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -239,8 +260,8 @@ class MainWindow(QMainWindow):
         try:
             # 确认操作
             reply = QMessageBox.question(self, "确认", f"确定要删除 '{file_path}' 吗?\n(文件将被移动到回收站)",
-                                         QMessageBox.Yes | QMessageBox.No)
-            if reply == QMessageBox.Yes:
+                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)  # type: ignore
+            if reply == QMessageBox.StandardButton.Yes:
                 # 执行删除操作
                 self.file_manager_panel.move_to_recycle_bin(file_path)
                 logger.info(f"删除文件: {file_path}")
@@ -284,8 +305,8 @@ class MainWindow(QMainWindow):
             layout.addWidget(self.data_source_panel)
             dialog.resize(800, 600)
             # 设置对话框的父引用，以便在播放时可以关闭
-            self.data_source_panel.dialog_parent = dialog
-            dialog.exec_()
+            self.data_source_panel.dialog_parent = dialog  # type: ignore
+            dialog.exec()
             
             # 断开信号连接并清理引用，避免访问已销毁的对象
             try:
@@ -339,7 +360,7 @@ class MainWindow(QMainWindow):
             layout = QHBoxLayout(dialog)
             layout.addWidget(self.model_config_panel)
             dialog.resize(800, 600)
-            dialog.exec_()
+            dialog.exec()
             
             # 清理引用，避免访问已销毁的对象
             if hasattr(self, 'model_config_panel'):
@@ -363,7 +384,7 @@ class MainWindow(QMainWindow):
             layout = QHBoxLayout(dialog)
             layout.addWidget(self.auto_annotation_panel)
             dialog.resize(800, 600)
-            dialog.exec_()
+            dialog.exec()
             
             # 清理引用，避免访问已销毁的对象
             if hasattr(self, 'auto_annotation_panel'):
@@ -387,7 +408,7 @@ class MainWindow(QMainWindow):
             layout = QHBoxLayout(dialog)
             layout.addWidget(self.dataset_split_panel)
             dialog.resize(600, 400)
-            dialog.exec_()
+            dialog.exec()
             
             # 清理引用，避免访问已销毁的对象
             if hasattr(self, 'dataset_split_panel'):
@@ -397,44 +418,68 @@ class MainWindow(QMainWindow):
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"打开数据集划分面板时发生异常: {str(e)}")
 
-    def eventFilter(self, obj, event):
+    def open_server_config_panel(self):
+        """
+        打开服务器配置面板
+        """
+        try:
+            # 每次都创建新的实例，避免使用已销毁的对象
+            self.server_config_panel = ServerConfigPanel()
+            
+            # 创建对话框并显示面板
+            dialog = QDialog(self)
+            dialog.setWindowTitle("服务器管理")
+            layout = QHBoxLayout(dialog)
+            layout.addWidget(self.server_config_panel)
+            dialog.resize(800, 600)
+            dialog.exec()
+            
+            # 清理引用，避免访问已销毁的对象
+            if hasattr(self, 'server_config_panel'):
+                delattr(self, 'server_config_panel')
+        except Exception as e:
+            logger.error(f"打开服务器配置面板时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"打开服务器配置面板时发生异常: {str(e)}")
+
+    def eventFilter(self, a0, a1):  # type: ignore
         """
         事件过滤器，用于捕获全局按键事件
 
         Args:
-            obj: 事件对象
-            event: 事件
+            a0: 事件对象
+            a1: 事件
 
         Returns:
             bool: 是否处理了事件
         """
         try:
             # 检查是否是按键事件
-            if event.type() == QEvent.KeyPress:
-                key_event = event
+            if a1 and a1.type() == QEvent.Type.KeyPress:
+                key_event = a1
                 # 检查是否是回车键
-                if key_event.key() in (Qt.Key_Return, Qt.Key_Enter):
+                if isinstance(key_event, QKeyEvent) and key_event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                     # 查找当前活动的模态对话框
                     modal_widgets = QApplication.topLevelWidgets()
                     for widget in modal_widgets:
                         if isinstance(widget, (QMessageBox, QDialog)) and widget.isActiveWindow():
                             # 如果是确认对话框，点击"Yes"按钮
                             if hasattr(widget, 'button'):
-                                yes_button = widget.button(QMessageBox.Yes)
+                                yes_button = widget.button(QMessageBox.StandardButton.Yes)
                                 if yes_button and yes_button.isEnabled():
                                     yes_button.click()
                                     return True
                             break
 
                 # 检查是否是ESC键
-                elif key_event.key() == Qt.Key_Escape:
+                elif isinstance(key_event, QKeyEvent) and key_event.key() == Qt.Key.Key_Escape:
                     # 查找当前活动的模态对话框
                     modal_widgets = QApplication.topLevelWidgets()
                     for widget in modal_widgets:
                         if isinstance(widget, (QMessageBox, QDialog)) and widget.isActiveWindow():
                             # 如果是确认对话框，点击"No"按钮或者关闭对话框
                             if hasattr(widget, 'button'):
-                                no_button = widget.button(QMessageBox.No)
+                                no_button = widget.button(QMessageBox.StandardButton.No)
                                 if no_button and no_button.isEnabled():
                                     no_button.click()
                                     return True
@@ -444,41 +489,31 @@ class MainWindow(QMainWindow):
                     return False
 
             # 检查是否是ESC键且处于全屏模式
-            elif event.type() == QEvent.KeyPress and event.key() == Qt.Key_Escape and self.fullscreen_mode:
-                self.toggle_fullscreen_mode()
-                return True
+            elif a1 and a1.type() == QEvent.Type.KeyPress:
+                key_event = a1
+                if isinstance(key_event, QKeyEvent) and key_event.key() == Qt.Key.Key_Escape and self.fullscreen_mode:
+                    self.toggle_fullscreen_mode()
+                    return True
             
-            return super().eventFilter(obj, event)
+            return super().eventFilter(a0, a1)
         except Exception as e:
             logger.error(f"事件过滤器处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             return False
 
-    def showEvent(self, event):
+    def showEvent(self, a0):  # type: ignore
         """
         窗口显示事件，安装事件过滤器
 
         Args:
-            event: 显示事件
+            a0: 显示事件
         """
         try:
-            super().showEvent(event)
+            super().showEvent(a0)
             # 安装事件过滤器来捕获全局按键事件
-            QApplication.instance().installEventFilter(self)
+            app_instance = QApplication.instance()
+            if app_instance:
+                app_instance.installEventFilter(self)
         except Exception as e:
             logger.error(f"窗口显示事件处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-

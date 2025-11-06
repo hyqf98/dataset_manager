@@ -5,6 +5,7 @@ PyQt5>=5.15.0,<5.15.12  # 限制版本范围以避免兼容性问题
 opencv-python>=4.12.0.88
 ultralytics>=8.3.0
 openai>=1.50.0
+paramiko>=4.0.0
 
 # 不同操作系统的安装说明：
 #

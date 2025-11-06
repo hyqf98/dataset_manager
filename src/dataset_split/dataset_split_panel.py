@@ -41,6 +41,10 @@ class DatasetSplitter:
             if abs(total_ratio - 1.0) > 1e-6:
                 raise ValueError("训练集、验证集和测试集比例之和必须为1.0")
 
+            # 使用数据集文件夹名称作为导出名称
+            dataset_name = os.path.basename(os.path.normpath(dataset_path))
+            output_path = os.path.join(output_path, dataset_name)
+            
             # 创建输出目录结构
             train_dir = os.path.join(output_path, "train")
             val_dir = os.path.join(output_path, "val")
@@ -99,6 +103,9 @@ class DatasetSplitter:
             # 生成类别名称列表
             class_names = DatasetSplitter._get_class_names(dataset_path)
             
+            # 在每个labels目录下生成classes.txt文件
+            DatasetSplitter._generate_classes_files(output_path, class_names)
+            
             # 生成YOLO配置文件
             DatasetSplitter._generate_yaml_config(output_path, class_names)
 
@@ -152,6 +159,25 @@ class DatasetSplitter:
             class_names = [f"class_{i}" for i in sorted(class_ids)] if class_ids else ["default"]
             
         return class_names
+
+    @staticmethod
+    def _generate_classes_files(output_path, class_names):
+        """
+        在每个数据集划分的labels目录下生成classes.txt文件
+
+        Args:
+            output_path (str): 输出路径
+            class_names (list): 类别名称列表
+        """
+        # 在train, val, test的labels目录下都生成classes.txt
+        for split in ["train", "val", "test"]:
+            labels_dir = os.path.join(output_path, split, "labels")
+            if os.path.exists(labels_dir):
+                classes_file = os.path.join(labels_dir, "classes.txt")
+                with open(classes_file, 'w', encoding='utf-8') as f:
+                    for class_name in class_names:
+                        f.write(f"{class_name}\n")
+                logger.info(f"classes.txt文件已生成: {classes_file}")
 
     @staticmethod
     def _generate_yaml_config(output_path, class_names):
@@ -265,7 +291,6 @@ class DatasetSplitPanel(QWidget):
         """)
         
         form_layout = QFormLayout(form_container)
-        form_layout.setLabelAlignment(Qt.AlignRight)
         form_layout.setHorizontalSpacing(20)
         form_layout.setVerticalSpacing(15)
         
@@ -428,7 +453,7 @@ class DatasetSplitPanel(QWidget):
         
         # 添加控件到主布局
         layout.addWidget(form_container)
-        layout.addWidget(self.split_btn, alignment=Qt.AlignCenter)
+        layout.addWidget(self.split_btn)
         layout.addWidget(self.progress_bar)
         
         # 添加输出说明

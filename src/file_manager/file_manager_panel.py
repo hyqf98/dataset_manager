@@ -41,11 +41,11 @@ class FileManagerProxyModel(QSortFilterProxyModel):
     def filterAcceptsRow(self, source_row, source_parent):
         """
         过滤函数，决定哪些行应该显示
-
+        
         Args:
             source_row (int): 源行
             source_parent (QModelIndex): 源父级索引
-
+            
         Returns:
             bool: 是否接受该行
         """
@@ -54,46 +54,44 @@ class FileManagerProxyModel(QSortFilterProxyModel):
             source_model = self.sourceModel()
             if not source_model:
                 return True
-
+                
             # 获取当前索引
             source_index = source_model.index(source_row, 0, source_parent)
             if not source_index.isValid():
                 return True
-
+                
             # 获取当前节点的路径
-            current_path = source_model.filePath(source_index)
-
+            if source_model and hasattr(source_model, 'filePath'):
+                current_path = source_model.filePath(source_index) if isinstance(source_model, QFileSystemModel) else ""
+            else:
+                current_path = ""
+            
             # 如果没有设置根路径，显示所有内容
             if not self.root_paths:
                 return True
-
+                
             # 检查当前路径是否属于任何一个根路径
             for root_path in self.root_paths:
-                # 使用os.path.normpath标准化路径，处理不同操作系统的路径分隔符
+                # 标准化路径以便比较
                 normalized_current_path = os.path.normpath(current_path)
                 normalized_root_path = os.path.normpath(root_path)
-
-                # 转换为统一的正斜杠格式，便于比较
-                normalized_current_path = normalized_current_path.replace(os.sep, "/")
-                normalized_root_path = normalized_root_path.replace(os.sep, "/")
-
-                # 确保路径以斜杠结尾，便于准确比较
-                if not normalized_root_path.endswith("/"):
-                    normalized_root_path += "/"
-
-                # 检查是否是根路径本身
-                if normalized_current_path == normalized_root_path.rstrip("/"):
+                
+                # 完全匹配根路径 - 显示根路径本身
+                if normalized_current_path == normalized_root_path:
                     return True
-
-                # 检查是否在根路径之下（确保是完整的路径匹配）
-                if normalized_current_path.startswith(normalized_root_path):
+                    
+                # 是根路径的子路径 - 显示根路径下的所有内容
+                if normalized_current_path.startswith(normalized_root_path + os.sep):
                     return True
-
-                # 检查是否是根路径的父目录（允许显示根路径的父目录以便导航）
-                if normalized_root_path.startswith(normalized_current_path + "/") or \
-                   normalized_root_path == normalized_current_path + "/":
+                    
+                # 是根路径的父路径 - 允许导航到根路径（显示根路径的父目录以便用户可以导航到根路径）
+                # 特别处理根路径本身的情况，确保根路径能正确显示
+                # 同时确保根路径的直接父目录也能显示，这样用户就能看到根路径本身
+                if (normalized_root_path.startswith(normalized_current_path + os.sep) or 
+                    normalized_current_path == os.path.dirname(normalized_root_path) or
+                    (os.path.dirname(normalized_root_path) and normalized_current_path == os.path.dirname(os.path.dirname(normalized_root_path)))):
                     return True
-
+                    
             return False
         except Exception as e:
             logger.error(f"过滤行时发生异常: {str(e)}")
@@ -391,10 +389,10 @@ class FileManagerUI(QWidget):
             self.tree_view.setDragEnabled(True)
             self.tree_view.setAcceptDrops(True)
             self.tree_view.setDropIndicatorShown(True)
-            self.tree_view.setDefaultDropAction(Qt.MoveAction)
+            self.tree_view.setDefaultDropAction(Qt.DropAction.MoveAction)
 
             # 启用右键菜单
-            self.tree_view.setContextMenuPolicy(Qt.CustomContextMenu)
+            self.tree_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             self.tree_view.customContextMenuRequested.connect(self.show_context_menu)
 
             # 连接拖拽事件
@@ -477,28 +475,41 @@ class FileManagerUI(QWidget):
         """
         try:
             # 设置代理模型的根路径列表
-            self.proxy_model.set_root_paths(paths)
+            if self.proxy_model:
+                self.proxy_model.set_root_paths(paths)
 
             # 更新根路径显示
             if paths:
-                self.root_path_label.setText(f"已导入 {len(paths)} 个文件夹")
+                if self.root_path_label:
+                    self.root_path_label.setText(f"已导入 {len(paths)} 个文件夹")
 
-                # 设置模型的根路径为所有根路径的公共父目录
-                # 找到所有路径的公共父目录
-                if len(paths) == 1:
-                    common_parent = os.path.dirname(paths[0])
-                else:
-                    # 找到公共父目录
-                    common_parent = os.path.commonpath(paths)
+                # 修复bug1: 直接使用导入的路径作为根路径，而不是其父目录
+                # 对于所有情况，使用能够包含所有根路径的公共父目录作为根路径
+                # 这样可以确保所有导入的根路径都能正确显示
+                root_path = os.path.commonpath(paths)
+                
+                # 特殊处理：确保根路径本身能够显示
+                # 当根路径是文件系统中的一个具体目录时，我们需要确保它本身能显示在树中
 
-                self.model.setRootPath(common_parent)
+                if self.model:
+                    self.model.setRootPath(root_path)
 
                 # 设置视图的根索引
-                root_index = self.model.index(common_parent)
-                proxy_root_index = self.proxy_model.mapFromSource(root_index)
-                self.tree_view.setRootIndex(proxy_root_index)
+                # 修复问题：不要将视图的根索引设置为具体的根路径，而是设置为其父目录
+                # 这样可以确保根路径本身也能显示在树中
+                if len(paths) == 1:
+                    # 对于单个路径，设置为其父目录作为根索引
+                    parent_path = os.path.dirname(root_path)
+                    root_index = self.model.index(parent_path) if self.model else None
+                else:
+                    # 对于多个路径，使用公共父目录作为根索引
+                    root_index = self.model.index(root_path) if self.model else None
+                proxy_root_index = self.proxy_model.mapFromSource(root_index) if self.proxy_model and root_index else None
+                if self.tree_view and proxy_root_index:
+                    self.tree_view.setRootIndex(proxy_root_index)
             else:
-                self.root_path_label.setText("未选择文件夹")
+                if self.root_path_label:
+                    self.root_path_label.setText("未选择文件夹")
                 self.clear_view()
 
             # 重置已加载文件记录
@@ -519,10 +530,12 @@ class FileManagerUI(QWidget):
         """
         try:
             # 设置空的根索引以确保初始状态为空
-            invalid_index = self.proxy_model.index(-1, -1)
-            self.tree_view.setRootIndex(invalid_index)
+            invalid_index = self.proxy_model.index(-1, -1) if self.proxy_model else None
+            if self.tree_view and invalid_index:
+                self.tree_view.setRootIndex(invalid_index)
             # 重置根路径标签
-            self.root_path_label.setText("未选择文件夹")
+            if self.root_path_label:
+                self.root_path_label.setText("未选择文件夹")
             logger.debug("清空文件视图")
         except Exception as e:
             logger.error(f"清空视图时发生异常: {str(e)}")
@@ -536,11 +549,12 @@ class FileManagerUI(QWidget):
             str: 选中的文件路径
         """
         try:
-            index = self.tree_view.currentIndex()
-            if index.isValid():
+            index = self.tree_view.currentIndex() if self.tree_view else None
+            if index and index.isValid():
                 # 需要将代理模型的索引映射回源模型的索引
-                source_index = self.proxy_model.mapToSource(index)
-                return self.model.filePath(source_index)
+                source_index = self.proxy_model.mapToSource(index) if self.proxy_model else None
+                if self.model and source_index:
+                    return self.model.filePath(source_index)
             return None
         except Exception as e:
             logger.error(f"获取选中路径时发生异常: {str(e)}")
@@ -587,31 +601,31 @@ class FileManagerUI(QWidget):
         """
         try:
             # 获取右键点击的项
-            index = self.tree_view.indexAt(position)
-            if not index.isValid():
+            index = self.tree_view.indexAt(position) if self.tree_view else None
+            if not index or not index.isValid():
                 logger.debug("右键点击位置无效")
                 return
 
             # 需要将代理模型的索引映射回源模型的索引
-            source_index = self.proxy_model.mapToSource(index)
+            source_index = self.proxy_model.mapToSource(index) if self.proxy_model else None
             # 发射右键菜单信号，让panel处理具体逻辑
-            file_path = self.model.filePath(source_index)
+            file_path = self.model.filePath(source_index) if self.model and source_index else ""
             self.context_menu_requested.emit(file_path, position)
             logger.debug(f"显示上下文菜单: {file_path}")
         except Exception as e:
             logger.error(f"显示上下文菜单时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
 
-    def handle_drag_enter(self, event):
+    def handle_drag_enter(self, e):
         """
         处理拖拽进入事件
 
         Args:
-            event: 拖拽事件
+            e: 拖拽事件
         """
         try:
-            if event.mimeData().hasUrls():
-                event.acceptProposedAction()
+            if e.mimeData().hasUrls():
+                e.acceptProposedAction()
                 logger.debug("接受拖拽进入事件")
         except Exception as e:
             logger.error(f"处理拖拽进入事件时发生异常: {str(e)}")
@@ -627,11 +641,11 @@ class FileManagerUI(QWidget):
         try:
             if event.mimeData().hasUrls():
                 # 获取当前位置的索引
-                index = self.tree_view.indexAt(event.pos())
-                if index.isValid():
+                index = self.tree_view.indexAt(event.pos()) if self.tree_view else None
+                if index and index.isValid():
                     # 需要将代理模型的索引映射回源模型的索引
-                    source_index = self.proxy_model.mapToSource(index)
-                    path = self.model.filePath(source_index)
+                    source_index = self.proxy_model.mapToSource(index) if self.proxy_model else None
+                    path = self.model.filePath(source_index) if self.model and source_index else ""
                     # 只允许拖拽到文件夹上
                     if os.path.isdir(path):
                         event.acceptProposedAction()
@@ -643,31 +657,31 @@ class FileManagerUI(QWidget):
             logger.error(f"处理拖拽移动事件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
 
-    def handle_drop(self, event):
+    def handle_drop(self, e):
         """
         处理拖拽放置事件
 
         Args:
-            event: 拖拽事件
+            e: 拖拽事件
         """
         try:
-            if event.mimeData().hasUrls():
+            if e.mimeData().hasUrls():
                 # 获取放置位置的索引
-                index = self.tree_view.indexAt(event.pos())
-                if index.isValid():
+                index = self.tree_view.indexAt(e.pos()) if self.tree_view else None
+                if index and index.isValid():
                     # 需要将代理模型的索引映射回源模型的索引
-                    source_index = self.proxy_model.mapToSource(index)
-                    target_path = self.model.filePath(source_index)
+                    source_index = self.proxy_model.mapToSource(index) if self.proxy_model else None
+                    target_path = self.model.filePath(source_index) if self.model and source_index else ""
                     # 如果目标不是文件夹，使用其所在的文件夹
                     if not os.path.isdir(target_path):
                         target_path = os.path.dirname(target_path)
 
                     # 发射文件放置信号
-                    for url in event.mimeData().urls():
+                    for url in e.mimeData().urls():
                         source_path = url.toLocalFile()
                         self.file_dropped.emit(source_path, target_path)
                         logger.debug(f"处理拖拽放置事件: {source_path} -> {target_path}")
-                event.acceptProposedAction()
+                e.acceptProposedAction()
         except Exception as e:
             logger.error(f"处理拖拽放置事件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -892,10 +906,10 @@ class RecycleBinDialog(QDialog):
                     tree_item.setText(3, self.format_time(mtime))
 
                     # 保存完整路径作为数据
-                    tree_item.setData(0, Qt.UserRole, item_path)
+                    tree_item.setData(0, Qt.ItemDataRole.UserRole, item_path)
 
                     # 保存所在回收站路径，用于还原操作
-                    tree_item.setData(0, Qt.UserRole + 1, root_path)
+                    tree_item.setData(0, Qt.ItemDataRole.UserRole + 1, root_path)
 
             # 递归查找子目录中的delete文件夹
             for root, dirs, files in os.walk(root_path):
@@ -933,10 +947,10 @@ class RecycleBinDialog(QDialog):
                                     tree_item.setText(3, self.format_time(mtime))
 
                                     # 保存完整路径作为数据
-                                    tree_item.setData(0, Qt.UserRole, item_path)
+                                    tree_item.setData(0, Qt.ItemDataRole.UserRole, item_path)
 
                                     # 保存所在回收站路径，用于还原操作
-                                    tree_item.setData(0, Qt.UserRole + 1, delete_path)
+                                    tree_item.setData(0, Qt.ItemDataRole.UserRole + 1, delete_path)
         except Exception as e:
             QMessageBox.critical(self, "错误", f"查找回收站内容失败: {str(e)}")
             logger.error(f"查找回收站内容失败: {str(e)}", exc_info=True)
@@ -997,9 +1011,9 @@ class RecycleBinDialog(QDialog):
 
         restored_count = 0
         for item in selected_items:
-            file_path = item.data(0, Qt.UserRole)
+            file_path = item.data(0, Qt.ItemDataRole.UserRole)
             # 获取该文件所在的回收站路径
-            recycle_bin_path = item.data(0, Qt.UserRole + 1) or self.recycle_bin_path
+            recycle_bin_path = item.data(0, Qt.ItemDataRole.UserRole + 1) or self.recycle_bin_path
             if self.restore_file(file_path, recycle_bin_path):
                 # 从列表中移除
                 index = self.file_tree.indexOfTopLevelItem(item)
@@ -1018,8 +1032,8 @@ class RecycleBinDialog(QDialog):
         """
         还原所有文件
         """
-        root = self.file_tree.invisibleRootItem()
-        count = root.childCount()
+        root = self.file_tree.invisibleRootItem() if self.file_tree else None
+        count = root.childCount() if root else 0
 
         if count == 0:
             QMessageBox.information(self, "提示", "回收站是空的!")
@@ -1032,10 +1046,10 @@ class RecycleBinDialog(QDialog):
             restored_count = 0
             # 从后往前删除避免索引变化问题
             for i in range(count - 1, -1, -1):
-                item = root.child(i)
-                file_path = item.data(0, Qt.UserRole)
+                item = root.child(i) if root else None
+                file_path = item.data(0, Qt.ItemDataRole.UserRole) if item else ""
                 # 获取该文件所在的回收站路径
-                recycle_bin_path = item.data(0, Qt.UserRole + 1) or self.recycle_bin_path
+                recycle_bin_path = (item.data(0, Qt.ItemDataRole.UserRole + 1) if item else "") or self.recycle_bin_path
                 if self.restore_file(file_path, recycle_bin_path):
                     self.file_tree.takeTopLevelItem(i)
                     restored_count += 1
@@ -1144,8 +1158,8 @@ class RecycleBinDialog(QDialog):
         if reply == QMessageBox.Yes:
             deleted_count = 0
             for item in selected_items:
-                file_path = item.data(0, Qt.UserRole)
-                recycle_bin_path = item.data(0, Qt.UserRole + 1) or self.recycle_bin_path
+                file_path = item.data(0, Qt.ItemDataRole.UserRole)
+                recycle_bin_path = item.data(0, Qt.ItemDataRole.UserRole + 1) or self.recycle_bin_path
                 if self.delete_file(file_path):
                     # 从列表中移除
                     index = self.file_tree.indexOfTopLevelItem(item)
@@ -1324,7 +1338,8 @@ class FileManagerPanel(QWidget):
             self.ui.refresh_btn.clicked.connect(self.refresh_view)
 
             # 连接树形视图的点击事件，用于处理文件和文件夹点击
-            self.ui.tree_view.clicked.connect(self.on_item_clicked)
+            if self.ui and self.ui.tree_view:
+                self.ui.tree_view.clicked.connect(self.on_item_clicked)
 
             # 连接右键菜单事件
             self.ui.context_menu_requested.connect(self.show_context_menu)
@@ -1342,7 +1357,7 @@ class FileManagerPanel(QWidget):
 
             # 创建Delete键快捷方式，但只在文件管理器有焦点时生效
             self.delete_shortcut = QShortcut(QKeySequence("Delete"), self)
-            self.delete_shortcut.setContext(Qt.WidgetWithChildrenShortcut)  # 只在当前widget或其子widget有焦点时激活
+            self.delete_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)  # 只在当前widget或其子widget有焦点时激活
             self.delete_shortcut.activated.connect(self.delete_selected_file)
         except Exception as e:
             logger.error(f"FileManagerPanel初始化UI时发生异常: {str(e)}")
@@ -1396,17 +1411,42 @@ class FileManagerPanel(QWidget):
                 logger.warning("尝试移除无效的文件或文件夹")
                 return
 
+            # 修复bug2: 简化并改进路径匹配逻辑
+            root_to_remove = None
+            for root_path in self.imported_root_paths:
+                # 标准化路径以便比较
+                normalized_file_path = os.path.normpath(file_path)
+                normalized_root_path = os.path.normpath(root_path)
+                
+                # 完全匹配
+                if normalized_file_path == normalized_root_path:
+                    root_to_remove = root_path
+                    break
+                
+                # 检查file_path是否是root_path的子目录或者root_path是否是file_path的子目录
+                # 这样可以处理用户选中文件夹内部的任何节点时，仍然能够正确识别根路径
+                if (normalized_file_path.startswith(normalized_root_path + os.sep) or 
+                    normalized_root_path.startswith(normalized_file_path + os.sep)):
+                    root_to_remove = root_path
+                    break
+
+            if not root_to_remove:
+                QMessageBox.warning(self, "警告", "请选择一个已导入的文件夹!")
+                logger.warning(f"选中的路径不是已导入的文件夹: {file_path}")
+                logger.warning(f"当前导入的路径列表: {self.imported_root_paths}")
+                return
+
             # 确认操作
             reply = QMessageBox.question(self, "确认",
-                                         f"确定要从管理中移除 '{file_path}' 吗?\n(注意：这只是从软件中移除管理，不会删除文件系统中的文件)",
+                                         f"确定要从管理中移除 '{root_to_remove}' 吗?\n(注意：这只是从软件中移除管理，不会删除文件系统中的文件)",
                                          QMessageBox.Yes | QMessageBox.No)
             if reply == QMessageBox.Yes:
                 # 从持久化存储中移除该路径
-                self.ui.remove_imported_path(file_path)
+                self.ui.remove_imported_path(root_to_remove)
 
                 # 从导入的路径列表中移除
-                if file_path in self.imported_root_paths:
-                    self.imported_root_paths.remove(file_path)
+                if root_to_remove in self.imported_root_paths:
+                    self.imported_root_paths.remove(root_to_remove)
 
                 # 更新UI显示
                 if not self.imported_root_paths:
@@ -1421,7 +1461,7 @@ class FileManagerPanel(QWidget):
                 main_window = self.window()
                 if main_window and hasattr(main_window, 'preview_panel'):
                     main_window.preview_panel.show_message("请选择文件进行预览")
-                logger.info(f"从管理中移除文件夹: {file_path}")
+                logger.info(f"从管理中移除文件夹: {root_to_remove}")
         except Exception as e:
             logger.error(f"移除文件夹时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -1507,17 +1547,19 @@ class FileManagerPanel(QWidget):
         try:
             if index.isValid():
                 # 需要将代理模型的索引映射回源模型的索引
-                source_index = self.ui.proxy_model.mapToSource(index)
-                file_path = self.ui.model.filePath(source_index)
+                source_index = self.ui.proxy_model.mapToSource(index) if self.ui and self.ui.proxy_model else None
+                file_path = self.ui.model.filePath(source_index) if self.ui and self.ui.model and source_index else ""
                 file_info = QFileInfo(file_path)
 
                 # 检查是否是文件夹
                 if file_info.isDir():
                     # 如果是文件夹，展开或折叠文件夹，而不是下钻
-                    if self.ui.tree_view.isExpanded(index):
-                        self.ui.tree_view.collapse(index)
+                    if self.ui and self.ui.tree_view and self.ui.tree_view.isExpanded(index):
+                        if self.ui and self.ui.tree_view:
+                            self.ui.tree_view.collapse(index)
                     else:
-                        self.ui.tree_view.expand(index)
+                        if self.ui and self.ui.tree_view:
+                            self.ui.tree_view.expand(index)
                     logger.debug(f"文件夹点击: {file_path}")
                 else:
                     # 如果是文件，发送信号在预览面板中显示
@@ -1633,7 +1675,12 @@ class FileManagerPanel(QWidget):
                 context_menu.addAction(delete_action)
 
             # 在鼠标位置显示菜单
-            context_menu.exec_(self.ui.tree_view.viewport().mapToGlobal(position))
+            if self.ui and self.ui.tree_view:
+                if self.ui and self.ui.tree_view:
+                    if self.ui and self.ui.tree_view and self.ui.tree_view.viewport():
+                        viewport = self.ui.tree_view.viewport() if self.ui and self.ui.tree_view else None
+                        if viewport:
+                            context_menu.exec_(viewport.mapToGlobal(position))
             logger.debug(f"显示上下文菜单: {file_path}")
         except Exception as e:
             logger.error(f"显示上下文菜单时发生异常: {str(e)}")
@@ -1881,19 +1928,19 @@ class FileManagerPanel(QWidget):
         try:
             logger.info("选择前一个文件")
             # 获取当前选中的索引
-            current_index = self.ui.tree_view.currentIndex()
-            if current_index.isValid():
+            current_index = self.ui.tree_view.currentIndex() if self.ui and self.ui.tree_view else None
+            if current_index and current_index.isValid():
                 # 获取代理模型
-                proxy_model = self.ui.proxy_model
+                proxy_model = self.ui.proxy_model if self.ui else None
                 # 获取源模型
-                source_model = self.ui.model
+                source_model = self.ui.model if self.ui else None
 
                 # 将代理索引映射到源索引
-                source_index = proxy_model.mapToSource(current_index)
+                source_index = proxy_model.mapToSource(current_index) if proxy_model else None
 
                 # 获取上一个索引
-                parent = source_index.parent()
-                row = source_index.row()
+                parent = source_index.parent() if source_index else None
+                row = source_index.row() if source_index else 0
 
                 prev_index = None
                 prev_proxy_index = None
@@ -1902,45 +1949,46 @@ class FileManagerPanel(QWidget):
                 search_row = row - 1
                 while search_row >= 0:
                     # 同一级别中的上一个文件
-                    prev_index = source_model.index(search_row, 0, parent)
-                    if prev_index.isValid():
+                    prev_index = source_model.index(search_row, 0, parent) if source_model else None
+                    if prev_index and prev_index.isValid():
                         # 检查是否是文件且支持预览
-                        file_path = source_model.filePath(prev_index)
+                        file_path = source_model.filePath(prev_index) if source_model else ""
                         if os.path.isfile(file_path) and self.is_supported_file(file_path):
                             # 映射回代理模型
-                            prev_proxy_index = proxy_model.mapFromSource(prev_index)
-                            if prev_proxy_index.isValid():
+                            prev_proxy_index = proxy_model.mapFromSource(prev_index) if proxy_model else None
+                            if prev_proxy_index and prev_proxy_index.isValid():
                                 break
                     search_row -= 1
 
                 # 如果没找到，检查父级是否有上一个兄弟节点
                 if not (prev_proxy_index and prev_proxy_index.isValid()):
-                    parent_row = parent.row()
+                    parent_row = parent.row() if parent else 0
                     if parent_row > 0:
-                        parent_parent = parent.parent()
-                        prev_parent_index = source_model.index(parent_row - 1, 0, parent_parent)
+                        parent_parent = parent.parent() if parent else None
+                        prev_parent_index = source_model.index(parent_row - 1, 0, parent_parent) if source_model else None
                         # 获取该父节点的最后一个子节点
-                        prev_parent_row_count = source_model.rowCount(prev_parent_index)
+                        prev_parent_row_count = source_model.rowCount(prev_parent_index) if source_model and prev_parent_index else 0
                         if prev_parent_row_count > 0:
                             # 从最后一个子节点开始向前查找
                             search_row = prev_parent_row_count - 1
                             while search_row >= 0:
-                                prev_index = source_model.index(search_row, 0, prev_parent_index)
-                                if prev_index.isValid():
-                                    file_path = source_model.filePath(prev_index)
+                                prev_index = source_model.index(search_row, 0, prev_parent_index) if source_model and prev_parent_index else None
+                                if prev_index and prev_index.isValid():
+                                    file_path = source_model.filePath(prev_index) if source_model else ""
                                     if os.path.isfile(file_path) and self.is_supported_file(file_path):
-                                        prev_proxy_index = proxy_model.mapFromSource(prev_index)
-                                        if prev_proxy_index.isValid():
+                                        prev_proxy_index = proxy_model.mapFromSource(prev_index) if proxy_model else None
+                                        if prev_proxy_index and prev_proxy_index.isValid():
                                             break
                                 search_row -= 1
-                        elif os.path.isfile(source_model.filePath(prev_parent_index)) and self.is_supported_file(
-                                source_model.filePath(prev_parent_index)):
+                        elif source_model and prev_parent_index and os.path.isfile(source_model.filePath(prev_parent_index)) and self.is_supported_file(
+                                source_model.filePath(prev_parent_index) if source_model else ""):
                             # 父节点本身是文件
-                            prev_proxy_index = proxy_model.mapFromSource(prev_parent_index)
+                            prev_proxy_index = proxy_model.mapFromSource(prev_parent_index) if proxy_model and prev_parent_index else None
 
                 if prev_proxy_index and prev_proxy_index.isValid():
                     # 选中该索引
-                    self.ui.tree_view.setCurrentIndex(prev_proxy_index)
+                    if self.ui and self.ui.tree_view:
+                        self.ui.tree_view.setCurrentIndex(prev_proxy_index)
                     # 触发点击事件
                     self.on_item_clicked(prev_proxy_index)
         except Exception as e:
@@ -1954,20 +2002,20 @@ class FileManagerPanel(QWidget):
         try:
             logger.info("选择后一个文件")
             # 获取当前选中的索引
-            current_index = self.ui.tree_view.currentIndex()
-            if current_index.isValid():
+            current_index = self.ui.tree_view.currentIndex() if self.ui and self.ui.tree_view else None
+            if current_index and current_index.isValid():
                 # 获取代理模型
-                proxy_model = self.ui.proxy_model
+                proxy_model = self.ui.proxy_model if self.ui else None
                 # 获取源模型
-                source_model = self.ui.model
+                source_model = self.ui.model if self.ui else None
 
                 # 将代理索引映射到源索引
-                source_index = proxy_model.mapToSource(current_index)
+                source_index = proxy_model.mapToSource(current_index) if proxy_model else None
 
                 # 获取下一个索引
-                parent = source_index.parent()
-                row = source_index.row()
-                row_count = source_model.rowCount(parent)
+                parent = source_index.parent() if source_index else None
+                row = source_index.row() if source_index else 0
+                row_count = source_model.rowCount(parent) if source_model and parent else 0
 
                 next_index = None
                 next_proxy_index = None
@@ -1976,62 +2024,63 @@ class FileManagerPanel(QWidget):
                 search_row = row + 1
                 while search_row < row_count:
                     # 同一级别中的下一个文件
-                    next_index = source_model.index(search_row, 0, parent)
-                    if next_index.isValid():
+                    next_index = source_model.index(search_row, 0, parent) if source_model and parent else None
+                    if next_index and next_index.isValid():
                         # 检查是否是文件且支持预览
-                        file_path = source_model.filePath(next_index)
+                        file_path = source_model.filePath(next_index) if source_model else ""
                         if os.path.isfile(file_path) and self.is_supported_file(file_path):
                             # 映射回代理模型
-                            next_proxy_index = proxy_model.mapFromSource(next_index)
-                            if next_proxy_index.isValid():
+                            next_proxy_index = proxy_model.mapFromSource(next_index) if proxy_model else None
+                            if next_proxy_index and next_proxy_index.isValid():
                                 break
                     search_row += 1
 
                 # 如果没找到，检查父级是否有下一个兄弟节点
                 if not (next_proxy_index and next_proxy_index.isValid()):
-                    parent_row = parent.row()
-                    parent_row_count = source_model.rowCount(parent.parent())
+                    parent_row = parent.row() if parent else 0
+                    parent_row_count = source_model.rowCount(parent.parent()) if source_model and parent else 0
                     if parent_row < parent_row_count - 1:
-                        parent_parent = parent.parent()
-                        next_parent_index = source_model.index(parent_row + 1, 0, parent_parent)
+                        parent_parent = parent.parent() if parent else None
+                        next_parent_index = source_model.index(parent_row + 1, 0, parent_parent) if source_model and parent_parent else None
                         # 获取该父节点的第一个子节点
-                        if source_model.hasChildren(next_parent_index):
+                        if source_model and next_parent_index and source_model.hasChildren(next_parent_index):
                             # 从第一个子节点开始向后查找
                             search_row = 0
-                            child_row_count = source_model.rowCount(next_parent_index)
+                            child_row_count = source_model.rowCount(next_parent_index) if source_model else 0
                             while search_row < child_row_count:
-                                next_index = source_model.index(search_row, 0, next_parent_index)
-                                if next_index.isValid():
-                                    file_path = source_model.filePath(next_index)
+                                next_index = source_model.index(search_row, 0, next_parent_index) if source_model and next_parent_index else None
+                                if next_index and next_index.isValid():
+                                    file_path = source_model.filePath(next_index) if source_model else ""
                                     if os.path.isfile(file_path) and self.is_supported_file(file_path):
-                                        next_proxy_index = proxy_model.mapFromSource(next_index)
-                                        if next_proxy_index.isValid():
+                                        next_proxy_index = proxy_model.mapFromSource(next_index) if proxy_model else None
+                                        if next_proxy_index and next_proxy_index.isValid():
                                             break
                                 search_row += 1
-                        elif os.path.isfile(source_model.filePath(next_parent_index)) and self.is_supported_file(
-                                source_model.filePath(next_parent_index)):
+                        elif source_model and next_parent_index and os.path.isfile(source_model.filePath(next_parent_index)) and self.is_supported_file(
+                                source_model.filePath(next_parent_index) if source_model else ""):
                             # 父节点本身是文件
-                            next_proxy_index = proxy_model.mapFromSource(next_parent_index)
+                            next_proxy_index = proxy_model.mapFromSource(next_parent_index) if proxy_model and next_parent_index else None
 
                 if next_proxy_index and next_proxy_index.isValid():
                     # 选中该索引
-                    self.ui.tree_view.setCurrentIndex(next_proxy_index)
+                    if self.ui and self.ui.tree_view:
+                        self.ui.tree_view.setCurrentIndex(next_proxy_index)
                     # 触发点击事件
                     self.on_item_clicked(next_proxy_index)
         except Exception as e:
             logger.error(f"选择后一个文件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
 
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, a0):
         """
         处理键盘按键事件
 
         Args:
-            event: 键盘事件
+            a0: 键盘事件
         """
         try:
             # 检查是否是回车键
-            if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            if a0 and a0.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 # 如果有确认对话框打开，则模拟点击"是"按钮
                 focused_widget = self.focusWidget()
                 if isinstance(focused_widget, QMessageBox):
@@ -2041,7 +2090,7 @@ class FileManagerPanel(QWidget):
                         return
 
             # 检查是否是ESC键
-            elif event.key() == Qt.Key_Escape:
+            elif a0 and a0.key() == Qt.Key.Key_Escape:
                 # 如果有确认对话框打开，则模拟点击"否"按钮
                 focused_widget = self.focusWidget()
                 if isinstance(focused_widget, QMessageBox):
@@ -2051,7 +2100,7 @@ class FileManagerPanel(QWidget):
                         return
 
             # 调用父类的处理方法
-            super().keyPressEvent(event)
+            super().keyPressEvent(a0)
         except Exception as e:
             logger.error(f"处理键盘按键事件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")

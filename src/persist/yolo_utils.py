@@ -67,21 +67,24 @@ def save_yolo_annotations(file_path, image_label, class_names):
                 f.write(f"{class_id} 0 {len(points)} {points_str}\n")
 
 
-def load_yolo_annotations(file_path, class_names):
+def load_yolo_annotations(file_path, class_names, annotation_file=None):
     """
     加载YOLO格式的标注文件
     
     Args:
         file_path (str): 图片文件路径
         class_names (list): 类别名称列表
+        annotation_file (str, optional): 标注文件路径，如果未提供则使用默认路径
         
     Returns:
         list: 标注信息列表
     """
-    # 生成标注文件路径
-    base_name = os.path.splitext(os.path.basename(file_path))[0]
-    labels_dir = os.path.join(os.path.dirname(file_path), 'labels')
-    annotation_file = os.path.join(labels_dir, f"{base_name}.txt")
+    # 如果没有提供标注文件路径，则使用默认路径
+    if annotation_file is None:
+        # 生成标注文件路径
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        labels_dir = os.path.join(os.path.dirname(file_path), 'labels')
+        annotation_file = os.path.join(labels_dir, f"{base_name}.txt")
     
     annotations = []
     

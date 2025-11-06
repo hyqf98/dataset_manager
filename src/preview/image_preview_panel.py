@@ -467,25 +467,102 @@ class ImageLabel(QLabel):
         if not self.file_path or not os.path.exists(self.file_path):
             return
 
+        # 获取图片文件的基本信息
+        image_dir = os.path.dirname(self.file_path)
+        image_name = os.path.basename(self.file_path)
+        image_name_without_ext = os.path.splitext(image_name)[0]
+        
+        # 按优先级查找标注文件
+        annotation_paths = []
+        
+        # 1. 先找图片同一个路径下面的labels路径下有没有标注文件
+        labels_dir_same_level = os.path.join(image_dir, 'labels')
+        if os.path.exists(labels_dir_same_level):
+            annotation_path = os.path.join(labels_dir_same_level, image_name_without_ext + '.txt')
+            if os.path.exists(annotation_path):
+                annotation_paths.append(annotation_path)
+        
+        # 2. 再找图片同一个路径下面有没有同名标注文件
+        same_dir_annotation = os.path.join(image_dir, image_name_without_ext + '.txt')
+        if os.path.exists(same_dir_annotation):
+            annotation_paths.append(same_dir_annotation)
+        
+        # 3. 再找图片所属目录同级目录下面有没有同名标注文件
+        parent_dir = os.path.dirname(image_dir)
+        if parent_dir:
+            same_level_annotation = os.path.join(parent_dir, image_name_without_ext + '.txt')
+            if os.path.exists(same_level_annotation):
+                annotation_paths.append(same_level_annotation)
+        
+        # 4. 再找图片所属目录同级目录下面的labels路径下面有没有标注文件
+        if parent_dir:
+            labels_dir_parent_level = os.path.join(parent_dir, 'labels')
+            if os.path.exists(labels_dir_parent_level):
+                annotation_path = os.path.join(labels_dir_parent_level, image_name_without_ext + '.txt')
+                if os.path.exists(annotation_path):
+                    annotation_paths.append(annotation_path)
+        
+        # 使用找到的第一个有效的标注文件
+        annotation_file = None
+        for path in annotation_paths:
+            if os.path.exists(path):
+                annotation_file = path
+                break
+        
         # 加载类别名称
-        classes_file = os.path.join(os.path.dirname(self.file_path), 'labels', 'classes.txt')
-        if os.path.exists(classes_file):
+        classes_file = None
+        
+        # 按优先级查找类别文件
+        classes_paths = []
+        
+        # 查找classes.txt文件的路径
+        if annotation_file:
+            # 如果找到了标注文件，优先在标注文件同目录下查找
+            classes_paths.append(os.path.join(os.path.dirname(annotation_file), 'classes.txt'))
+        
+        # 在labels目录下查找
+        if os.path.exists(labels_dir_same_level):
+            classes_paths.append(os.path.join(labels_dir_same_level, 'classes.txt'))
+        
+        # 在图片同级目录下查找
+        classes_paths.append(os.path.join(image_dir, 'classes.txt'))
+        
+        # 在图片上级目录下查找
+        if parent_dir:
+            classes_paths.append(os.path.join(parent_dir, 'classes.txt'))
+            
+            # 在上级目录的labels目录下查找
+            if os.path.exists(labels_dir_parent_level):
+                classes_paths.append(os.path.join(labels_dir_parent_level, 'classes.txt'))
+        
+        # 使用找到的第一个有效的类别文件
+        for path in classes_paths:
+            if os.path.exists(path):
+                classes_file = path
+                break
+        
+        # 加载类别名称
+        if classes_file and os.path.exists(classes_file):
             with open(classes_file, 'r', encoding='utf-8') as f:
                 self.class_names = [line.strip() for line in f.readlines() if line.strip()]
+        else:
+            # 如果没有找到classes.txt，尝试从标注文件中推断类别
+            self.class_names = []
 
         # 加载标注信息
-        annotations = load_yolo_annotations(self.file_path, self.class_names)
-        for index, annotation in enumerate(annotations):
-            if annotation['type'] == 'rectangle':
-                rect_annotation = RectangleAnnotation(annotation['rectangle'], annotation['label'])
-                rect_annotation.id = index  # 使用索引作为ID
-                self.annotations.append(rect_annotation)
-            elif annotation['type'] == 'polygon':
-                polygon_annotation = PolygonAnnotation(annotation['points'], annotation['label'])
-                polygon_annotation.closed = True  # 从文件加载的多边形应该是闭合的
+        if annotation_file and os.path.exists(annotation_file):
+            annotations = load_yolo_annotations(self.file_path, self.class_names, annotation_file)
+            for index, annotation in enumerate(annotations):
+                if annotation['type'] == 'rectangle':
+                    rect_annotation = RectangleAnnotation(annotation['rectangle'], annotation['label'])
+                    rect_annotation.id = index  # 使用索引作为ID
+                    self.annotations.append(rect_annotation)
+                elif annotation['type'] == 'polygon':
+                    polygon_annotation = PolygonAnnotation(annotation['points'], annotation['label'])
+                    polygon_annotation.closed = True  # 从文件加载的多边形应该是闭合的
 
-                polygon_annotation.id = index  # 使用索引作为ID
-                self.annotations.append(polygon_annotation)
+                    polygon_annotation.id = index  # 使用索引作为ID
+                    self.annotations.append(polygon_annotation)
 
     def save_yolo_annotations(self):
         """保存YOLO格式的标注文件"""
