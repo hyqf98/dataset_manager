@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QFormLayout, QLin
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 from ..logging_config import logger
+import yaml
 
 
 class DatasetSplitter:
@@ -95,11 +96,86 @@ class DatasetSplitter:
                         target_label_path = os.path.join(target_dir, "labels", f"{image_base_name}.txt")
                         shutil.copy2(label_file, target_label_path)
 
+            # 生成类别名称列表
+            class_names = DatasetSplitter._get_class_names(dataset_path)
+            
+            # 生成YOLO配置文件
+            DatasetSplitter._generate_yaml_config(output_path, class_names)
+
             logger.info(f"数据集划分完成: 训练集{len(train_files)}张, 验证集{len(val_files)}张, 测试集{len(test_files)}张")
             return True
         except Exception as e:
             logger.error(f"数据集划分失败: {str(e)}")
             raise
+
+    @staticmethod
+    def _get_class_names(dataset_path):
+        """
+        从数据集中获取类别名称列表
+
+        Args:
+            dataset_path (str): 数据集路径
+
+        Returns:
+            list: 类别名称列表
+        """
+        class_names = []
+        labels_dir = os.path.join(dataset_path, "labels")
+        
+        if not os.path.exists(labels_dir):
+            logger.warning("未找到labels目录，将使用默认类别")
+            return ["default"]
+
+        # 遍历所有标签文件，提取类别ID
+        class_ids = set()
+        for root, dirs, files in os.walk(labels_dir):
+            for file in files:
+                if file.endswith(".txt"):
+                    with open(os.path.join(root, file), 'r') as f:
+                        for line in f:
+                            if line.strip():
+                                class_id = int(line.split()[0])
+                                class_ids.add(class_id)
+
+        # 尝试从classes.txt读取类别名称
+        classes_file = os.path.join(labels_dir, "classes.txt")
+        if os.path.exists(classes_file):
+            with open(classes_file, 'r') as f:
+                class_names = [line.strip() for line in f.readlines() if line.strip()]
+                # 确保类别数量与ID数量匹配
+                if len(class_names) <= max(class_ids) if class_ids else 0:
+                    logger.warning("classes.txt中的类别数量不足，将补充默认类别名称")
+                    while len(class_names) <= max(class_ids):
+                        class_names.append(f"class_{len(class_names)}")
+        else:
+            # 如果没有classes.txt，使用默认命名
+            class_names = [f"class_{i}" for i in sorted(class_ids)] if class_ids else ["default"]
+            
+        return class_names
+
+    @staticmethod
+    def _generate_yaml_config(output_path, class_names):
+        """
+        生成YOLO训练配置文件
+
+        Args:
+            output_path (str): 输出路径
+            class_names (list): 类别名称列表
+        """
+        config = {
+            'path': os.path.abspath(output_path),  # 数据集根目录
+            'train': 'train/images',               # 训练集图片路径
+            'val': 'val/images',                   # 验证集图片路径
+            'test': 'test/images',                 # 测试集图片路径
+            'nc': len(class_names),                # 类别数量
+            'names': class_names                   # 类别名称列表
+        }
+
+        yaml_path = os.path.join(output_path, "train.yml")
+        with open(yaml_path, 'w', encoding='utf-8') as f:
+            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+
+        logger.info(f"YOLO配置文件已生成: {yaml_path}")
 
 
 class SplitWorker(QThread):
@@ -165,6 +241,18 @@ class DatasetSplitPanel(QWidget):
         title_layout.addWidget(title_label)
         title_layout.addStretch()
         layout.addLayout(title_layout)
+
+        # 添加说明文本
+        description_label = QLabel("该工具将数据集划分为训练集、验证集和测试集，并生成符合YOLO格式的目录结构和配置文件。")
+        description_label.setWordWrap(True)
+        description_label.setStyleSheet("""
+            QLabel {
+                color: #666666;
+                font-size: 12px;
+                margin-bottom: 10px;
+            }
+        """)
+        layout.addWidget(description_label)
 
         # 创建表单容器
         form_container = QWidget()
@@ -342,6 +430,32 @@ class DatasetSplitPanel(QWidget):
         layout.addWidget(form_container)
         layout.addWidget(self.split_btn, alignment=Qt.AlignCenter)
         layout.addWidget(self.progress_bar)
+        
+        # 添加输出说明
+        output_description = QLabel("输出格式: \n"
+                                   "├── train/\n"
+                                   "│   ├── images/\n"
+                                   "│   └── labels/\n"
+                                   "├── val/\n"
+                                   "│   ├── images/\n"
+                                   "│   └── labels/\n"
+                                   "├── test/\n"
+                                   "│   ├── images/\n"
+                                   "│   └── labels/\n"
+                                   "└── train.yml")
+        output_description.setStyleSheet("""
+            QLabel {
+                font-family: monospace;
+                font-size: 11px;
+                color: #555555;
+                background-color: #f8f8f8;
+                padding: 10px;
+                border-radius: 4px;
+                margin-top: 10px;
+            }
+        """)
+        layout.addWidget(output_description)
+        
         layout.addStretch()
         
         self.setLayout(layout)

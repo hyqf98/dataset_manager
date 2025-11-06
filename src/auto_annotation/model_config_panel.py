@@ -224,7 +224,7 @@ class ModelConfigForm(QDialog):
         # YOLO模型选择布局（包含自定义模型选择按钮）
         yolo_model_layout = QHBoxLayout()
         self.yolo_model_name_combo = QComboBox()
-        # 添加"自定义"选项到下拉列表
+        # 添加预定义的模型到下拉列表
         self.yolo_model_name_combo.addItems([
             "yolov8n.pt", 
             "yolov8s.pt", 
@@ -325,9 +325,11 @@ class ModelConfigForm(QDialog):
             persist_path = self.get_model_persist_path()
             
             # 如果是默认提供的模型，将其保存到持久化路径
-            if model_name in ["yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8l.pt", "yolov8x.pt", 
-                              "yolov8s-world.pt", "yolov8s-worldv2.pt", "yolov8m-world.pt", 
-                              "yolov8m-worldv2.pt"]:
+            predefined_models = ["yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8l.pt", "yolov8x.pt", 
+                               "yolov8s-world.pt", "yolov8s-worldv2.pt", "yolov8m-world.pt", 
+                               "yolov8m-worldv2.pt"]
+                               
+            if model_name in predefined_models:
                 target_path = os.path.join(persist_path, model_name)
                 if not os.path.exists(target_path):
                     try:

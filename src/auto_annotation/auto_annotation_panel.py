@@ -329,11 +329,24 @@ class AnnotationWorker(QThread):
                 self.log_message.emit(f"未安装ultralytics库，无法使用YOLO模型处理图片: {image_file}")
                 return
 
-            # 加载模型
+            # 获取模型路径
             model_path = self.model_config.yolo_model_name
-            if not model_path or not os.path.exists(model_path):
-                self.log_message.emit(f"YOLO模型文件不存在: {model_path}")
-                return
+            
+            # 如果模型路径是预定义的模型名称，则使用缓存路径
+            predefined_models = ["yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8l.pt", "yolov8x.pt",
+                               "yolov8s-world.pt", "yolov8s-worldv2.pt", "yolov8m-world.pt", "yolov8m-worldv2.pt"]
+            
+            if model_path in predefined_models:
+                # 使用用户目录下的.dataset_m/models路径
+                user_home = os.path.expanduser("~")
+                model_cache_dir = os.path.join(user_home, ".dataset_m", "models")
+                os.makedirs(model_cache_dir, exist_ok=True)
+                model_path = os.path.join(model_cache_dir, model_path)
+                # ultralytics会自动下载模型到指定路径
+
+            # 检查模型文件是否存在，如果不存在则让ultralytics自动下载
+            if not os.path.exists(model_path):
+                self.log_message.emit(f"模型文件不存在，将自动下载: {model_path}")
 
             # 检查是否是YOLO-World模型（文件名包含world）
             if "world" in os.path.basename(model_path).lower():

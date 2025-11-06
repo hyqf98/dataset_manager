@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 import sys
 import traceback
+
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
-from src.ui.main_window import MainWindow
+
 from src.logging_config import logger
+from src.ui.main_window import MainWindow
+
 
 # 确保所有模块都被导入，以便正确初始化
-import src.data_source
-import src.auto_annotation
-import src.dataset_split
 
 
 def main():
@@ -16,8 +17,12 @@ def main():
     主函数，用于启动数据集管理应用程序
     """
     logger.info("启动数据集管理应用程序")
-    
+
     try:
+        # 启用高DPI缩放支持
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+
         app = QApplication(sys.argv)
         window = MainWindow()
         window.show()
