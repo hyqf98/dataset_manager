@@ -409,9 +409,12 @@ class ImageLabel(QLabel):
             self.scaled_pixmap = None
             return
 
-        # 计算缩放后的尺寸
-        scaled_width = int(self.pixmap.width() * self.scale_factor)
-        scaled_height = int(self.pixmap.height() * self.scale_factor)
+        # 获取设备像素比率
+        device_pixel_ratio = self.devicePixelRatioF()
+        
+        # 计算缩放后的尺寸，考虑设备像素比率
+        scaled_width = int(self.pixmap.width() * self.scale_factor * device_pixel_ratio)
+        scaled_height = int(self.pixmap.height() * self.scale_factor * device_pixel_ratio)
 
         # 生成高质量缩放后的图片
         self.scaled_pixmap = self.pixmap.scaled(
@@ -422,7 +425,7 @@ class ImageLabel(QLabel):
         )
 
         # 设置正确的devicePixelRatio以适应高分辨率屏幕
-        self.scaled_pixmap.setDevicePixelRatio(self.devicePixelRatioF())
+        self.scaled_pixmap.setDevicePixelRatio(device_pixel_ratio)
 
     def resizeEvent(self, event):
         """处理大小改变事件"""
@@ -1260,12 +1263,17 @@ class ImageLabel(QLabel):
             painter.drawPixmap(x, y, self.scaled_pixmap)
         elif self.pixmap and not self.pixmap.isNull():
             # 如果没有预缩放的图片，使用旧的方式（后备方案）
+            # 获取设备像素比率
+            device_pixel_ratio = self.devicePixelRatioF()
+            
             scaled_pixmap = self.pixmap.scaled(
-                int(self.pixmap.width() * self.scale_factor),
-                int(self.pixmap.height() * self.scale_factor),
+                int(self.pixmap.width() * self.scale_factor * device_pixel_ratio),
+                int(self.pixmap.height() * self.scale_factor * device_pixel_ratio),
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation
             )
+            # 设置正确的devicePixelRatio
+            scaled_pixmap.setDevicePixelRatio(device_pixel_ratio)
             painter.drawPixmap(x, y, scaled_pixmap)
 
         # 绘制标注提示信息
