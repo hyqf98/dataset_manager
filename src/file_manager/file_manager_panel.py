@@ -1668,6 +1668,13 @@ class FileManagerPanel(QWidget):
                     context_menu.addAction(rename_action)
 
                     context_menu.addSeparator()
+                else:
+                    # 选中的是文件，添加算法测试选项（仅对支持的文件格式）
+                    if self.is_supported_file(file_path):
+                        algorithm_test_action = QAction("算法测试", self)
+                        algorithm_test_action.triggered.connect(lambda: self.algorithm_test(file_path))
+                        context_menu.addAction(algorithm_test_action)
+                        context_menu.addSeparator()
 
                 # 添加删除选项（适用于文件和文件夹）
                 delete_action = QAction("删除", self)
@@ -1676,11 +1683,9 @@ class FileManagerPanel(QWidget):
 
             # 在鼠标位置显示菜单
             if self.ui and self.ui.tree_view:
-                if self.ui and self.ui.tree_view:
-                    if self.ui and self.ui.tree_view and self.ui.tree_view.viewport():
-                        viewport = self.ui.tree_view.viewport() if self.ui and self.ui.tree_view else None
-                        if viewport:
-                            context_menu.exec_(viewport.mapToGlobal(position))
+                viewport = self.ui.tree_view.viewport()
+                if viewport:
+                    context_menu.exec_(viewport.mapToGlobal(position))
             logger.debug(f"显示上下文菜单: {file_path}")
         except Exception as e:
             logger.error(f"显示上下文菜单时发生异常: {str(e)}")
@@ -1698,6 +1703,8 @@ class FileManagerPanel(QWidget):
             bool: 是否在回收站中
         """
         try:
+
+
             if not self.imported_root_paths:
                 return False
 
@@ -1991,6 +1998,12 @@ class FileManagerPanel(QWidget):
                         self.ui.tree_view.setCurrentIndex(prev_proxy_index)
                     # 触发点击事件
                     self.on_item_clicked(prev_proxy_index)
+                    
+                    # 如果算法测试对话框打开，更新其中的图片
+                    if hasattr(self, 'algorithm_test_dialog') and self.algorithm_test_dialog and self.algorithm_test_dialog.isVisible():
+                        file_path = source_model.filePath(prev_index) if source_model and prev_index else ""
+                        if file_path and os.path.exists(file_path):
+                            self.algorithm_test_dialog.set_current_file(file_path)
         except Exception as e:
             logger.error(f"选择前一个文件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -2067,6 +2080,12 @@ class FileManagerPanel(QWidget):
                         self.ui.tree_view.setCurrentIndex(next_proxy_index)
                     # 触发点击事件
                     self.on_item_clicked(next_proxy_index)
+                    
+                    # 如果算法测试对话框打开，更新其中的图片
+                    if hasattr(self, 'algorithm_test_dialog') and self.algorithm_test_dialog and self.algorithm_test_dialog.isVisible():
+                        file_path = source_model.filePath(next_index) if source_model and next_index else ""
+                        if file_path and os.path.exists(file_path):
+                            self.algorithm_test_dialog.set_current_file(file_path)
         except Exception as e:
             logger.error(f"选择后一个文件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -2193,3 +2212,93 @@ class FileManagerPanel(QWidget):
             logger.error(f"重命名文件或文件夹时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"重命名文件或文件夹时发生异常: {str(e)}")
+
+    def algorithm_test(self, file_path):
+        """
+        算法测试功能
+
+        Args:
+            file_path (str): 要测试的文件路径
+        """
+        try:
+            # 导入算法测试面板
+            from src.preview.algorithm_test_panel import AlgorithmTestPanel
+            
+            # 创建算法测试对话框
+            self.algorithm_test_dialog = AlgorithmTestPanel(file_path)
+            
+            # 连接信号（但不直接连接到文件管理器的选择方法，避免影响主预览面板）
+            # 而是连接到专门处理算法测试面板内部切换的方法
+            self.algorithm_test_dialog.switch_to_previous.connect(self.on_algorithm_test_prev)
+            self.algorithm_test_dialog.switch_to_next.connect(self.on_algorithm_test_next)
+            
+            # 显示对话框
+            self.algorithm_test_dialog.exec_()
+            
+            logger.info(f"算法测试完成: {file_path}")
+        except Exception as e:
+            logger.error(f"算法测试时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"算法测试时发生异常: {str(e)}")
+            
+    def on_algorithm_test_prev(self):
+        """
+        处理算法测试面板的上一张请求
+        """
+        # 发射信号通知主窗口切换到上一张资源，但不直接操作文件管理器的选择
+        # 这样可以避免影响主预览面板
+        if hasattr(self, 'algorithm_test_dialog') and self.algorithm_test_dialog:
+            # 获取当前文件所在目录的文件列表
+            current_dir = os.path.dirname(self.algorithm_test_dialog.current_file_path)
+            if os.path.exists(current_dir):
+                # 获取支持的文件列表
+                files = []
+                for f in os.listdir(current_dir):
+                    file_path = os.path.join(current_dir, f)
+                    if os.path.isfile(file_path) and self.is_supported_file(file_path):
+                        files.append(file_path)
+                
+                # 排序文件列表
+                files.sort()
+                
+                # 找到当前文件的索引
+                try:
+                    current_index = files.index(self.algorithm_test_dialog.current_file_path)
+                    # 切换到上一个文件
+                    if current_index > 0:
+                        prev_file = files[current_index - 1]
+                        self.algorithm_test_dialog.set_current_file(prev_file)
+                except ValueError:
+                    # 当前文件不在列表中
+                    pass
+            
+    def on_algorithm_test_next(self):
+        """
+        处理算法测试面板的下一张请求
+        """
+        # 发射信号通知主窗口切换到下一张资源，但不直接操作文件管理器的选择
+        # 这样可以避免影响主预览面板
+        if hasattr(self, 'algorithm_test_dialog') and self.algorithm_test_dialog:
+            # 获取当前文件所在目录的文件列表
+            current_dir = os.path.dirname(self.algorithm_test_dialog.current_file_path)
+            if os.path.exists(current_dir):
+                # 获取支持的文件列表
+                files = []
+                for f in os.listdir(current_dir):
+                    file_path = os.path.join(current_dir, f)
+                    if os.path.isfile(file_path) and self.is_supported_file(file_path):
+                        files.append(file_path)
+                
+                # 排序文件列表
+                files.sort()
+                
+                # 找到当前文件的索引
+                try:
+                    current_index = files.index(self.algorithm_test_dialog.current_file_path)
+                    # 切换到下一个文件
+                    if current_index < len(files) - 1:
+                        next_file = files[current_index + 1]
+                        self.algorithm_test_dialog.set_current_file(next_file)
+                except ValueError:
+                    # 当前文件不在列表中
+                    pass

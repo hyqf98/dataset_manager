@@ -517,3 +517,5 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"窗口显示事件处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+
