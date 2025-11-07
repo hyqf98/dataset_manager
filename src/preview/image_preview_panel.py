@@ -6,6 +6,7 @@ from PyQt5.QtGui import QPixmap, QPainter, QPen, QPolygon, QFont, QIcon, QColor
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel, QInputDialog, \
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QPushButton, QSizePolicy, QAction, QScrollArea
 
+
 from src.logging_config import logger
 from src.persist.yolo_utils import save_yolo_annotations, load_yolo_annotations
 
@@ -84,11 +85,10 @@ class RectangleAnnotation(Annotation):
             font = QFont()
             font.setPointSize(10)  # 将字体大小从14改为10
             painter.setFont(font)
-            text_rect = QRect(scaled_rect.topLeft(), QPoint(
-                scaled_rect.right(),
-                scaled_rect.top() + 25
-            ))
-            painter.drawText(text_rect, Qt.AlignCenter, self.label)
+            # 将标签显示在矩形框的左上方，进一步减小距离
+            text_x = scaled_rect.left()
+            text_y = scaled_rect.top() - 6  # 在矩形框上方6像素处显示
+            painter.drawText(text_x, text_y, self.label)
 
         # 如果被选中，绘制控制点
         if self.selected:
@@ -201,16 +201,12 @@ class PolygonAnnotation(Annotation):
         # 绘制标签
         # 绘制标签
         if self.label and len(self.points) > 0:
-            # 计算多边形的中心点（缩放后）
-            scaled_points = []  # 重新计算中心点的缩放点
-            for point in self.points:
-                scaled_points.append(QPoint(
-                    int(point.x() * scale_factor),
-                    int(point.y() * scale_factor)
-                ))
-
-            center_x = sum(point.x() for point in scaled_points) / len(scaled_points)
-            center_y = sum(point.y() for point in scaled_points) / len(scaled_points)
+            # 计算多边形的第一个点作为标签显示位置
+            first_point = self.points[0]
+            scaled_first_point = QPoint(
+                int(first_point.x() * scale_factor),
+                int(first_point.y() * scale_factor)
+            )
 
             # 设置文本颜色
             if self.selected:
@@ -220,11 +216,11 @@ class PolygonAnnotation(Annotation):
                 painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
             else:
                 painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
-            # 绘制标签文本
+            # 绘制标签文本（显示在第一个点的左上方，进一步减小距离）
             font = QFont()
             font.setPointSize(10)  # 将字体大小从14改为10
             painter.setFont(font)
-            painter.drawText(int(center_x), int(center_y), self.label)
+            painter.drawText(scaled_first_point.x() - 4, scaled_first_point.y() - 4, self.label)
 
     def get_center(self):
         """获取多边形中心点"""
@@ -260,6 +256,7 @@ class ImageLabel(QLabel):
         self.annotation_mode = False  # 标注模式开关
         self.current_annotation_label = ""  # 当前标注的标签内容
         self.show_annotation_hint = False  # 是否显示标注提示
+        self.user_scaled = False  # 添加标志，跟踪是否是用户手动缩放
 
         # 注解相关属性
         self.annotations = []  # 存储所有已完成的注解
@@ -272,6 +269,7 @@ class ImageLabel(QLabel):
 
         self.resizing = False  # 是否正在调整矩形框大小
         self.drag_start_point = QPoint()  # 拖动起始点
+
         self.drag_annotation_start_pos = QPoint()  # 被拖动注解的初始位置
         self.resize_handle = None  # 调整大小的控制点位置
 
@@ -308,6 +306,7 @@ class ImageLabel(QLabel):
         self.file_path = file_path
         self.pixmap = QPixmap(file_path)
         self.scale_factor = 1.0  # 重置缩放因子
+        self.user_scaled = False  # 重置用户缩放标志
         self.zoom_count = 0  # 重置缩放计数器
 
         # 重置注解相关属性
@@ -392,6 +391,9 @@ class ImageLabel(QLabel):
         # 限制最大缩放比例，避免过度放大
         self.scale_factor = min(self.scale_factor, 5.0)
 
+        # 重置用户缩放标志，因为这是自动调整
+        self.user_scaled = False
+
         # 生成高质量缩放后的图片缓存
         self.update_scaled_pixmap()
 
@@ -411,7 +413,7 @@ class ImageLabel(QLabel):
 
         # 获取设备像素比率
         device_pixel_ratio = self.devicePixelRatioF()
-        
+
         # 计算缩放后的尺寸，考虑设备像素比率
         scaled_width = int(self.pixmap.width() * self.scale_factor * device_pixel_ratio)
         scaled_height = int(self.pixmap.height() * self.scale_factor * device_pixel_ratio)
@@ -427,26 +429,51 @@ class ImageLabel(QLabel):
         # 设置正确的devicePixelRatio以适应高分辨率屏幕
         self.scaled_pixmap.setDevicePixelRatio(device_pixel_ratio)
 
+        # 强制刷新界面以确保图片正确显示
+        self.update()
+
     def resizeEvent(self, event):
         """处理大小改变事件"""
-        # 重新调整图片以适应新的视图大小
-        self.fit_image_to_view()
+        # 只有在非用户手动缩放时才重新调整图片以适应新的视图大小
+        if not self.user_scaled:
+            self.fit_image_to_view()
         super().resizeEvent(event)
         self.update()
 
     def wheelEvent(self, event):
         """处理鼠标滚轮事件，支持图片缩放"""
-        if event.modifiers() == Qt.ControlModifier:
-            # Ctrl+滚轮进行缩放
+        # 兼容不同操作系统的缩放快捷键
+        # Windows/Linux使用Ctrl键，Mac使用Cmd键
+        if event.modifiers() == Qt.ControlModifier or event.modifiers() == Qt.MetaModifier:
+            # 获取鼠标位置
+            mouse_pos = event.pos()
+
+            # 记录缩放前的滚动位置
+            old_scale = self.scale_factor
+            old_scroll_x = 0
+            old_scroll_y = 0
+            scroll_area = None
+
+            # 获取滚动区域和当前滚动位置
+            if self.parent() and hasattr(self.parent(), 'horizontalScrollBar') and hasattr(self.parent(), 'verticalScrollBar'):
+                scroll_area = self.parent()
+                old_scroll_x = scroll_area.horizontalScrollBar().value()
+                old_scroll_y = scroll_area.verticalScrollBar().value()
+
+            # Ctrl/Cmd+滚轮进行缩放，每次滚动缩放10%
+            zoom_step = 0.1  # 每次滚动的缩放步长
             if event.angleDelta().y() > 0:
                 # 放大
-                self.scale_factor *= 1.1
+                self.scale_factor *= (1 + zoom_step)
             else:
                 # 缩小
-                self.scale_factor /= 1.1
+                self.scale_factor /= (1 + zoom_step)
 
-            # 限制缩放范围
+            # 限制缩放范围（0.1倍到10倍）
             self.scale_factor = max(0.1, min(self.scale_factor, 10.0))
+
+            # 标记为用户手动缩放
+            self.user_scaled = True
 
             # 更新缩放图片缓存
             self.update_scaled_pixmap()
@@ -455,7 +482,42 @@ class ImageLabel(QLabel):
             if self.pixmap:
                 scaled_width = int(self.pixmap.width() * self.scale_factor)
                 scaled_height = int(self.pixmap.height() * self.scale_factor)
+
+                # 如果有鼠标位置信息，调整滚动条使鼠标位置保持不变
+                new_scroll_x = 0
+                new_scroll_y = 0
+                if scroll_area:
+                    # 检查鼠标是否在图片区域内
+                    # 使用图片的实际尺寸来判断鼠标位置
+                    image_rect = QRect(0, 0, scaled_width, scaled_height)
+                    if image_rect.contains(mouse_pos):
+                        # 鼠标在图片区域内，围绕鼠标位置缩放
+                        # 计算鼠标在当前图片中的相对位置
+                        relative_x = (old_scroll_x + mouse_pos.x()) / (self.pixmap.width() * old_scale) if old_scale > 0 else 0
+                        relative_y = (old_scroll_y + mouse_pos.y()) / (self.pixmap.height() * old_scale) if old_scale > 0 else 0
+                    else:
+                        # 鼠标不在图片区域内，围绕图片中心缩放
+                        relative_x = 0.5
+                        relative_y = 0.5
+
+                    # 计算新的滚动位置，使指定位置保持不变
+                    new_center_x = relative_x * scaled_width
+                    new_center_y = relative_y * scaled_height
+
+                    # 设置新的滚动位置
+                    new_scroll_x = new_center_x - mouse_pos.x()
+                    new_scroll_y = new_center_y - mouse_pos.y()
+
+                # 设置图片标签大小
                 self.setFixedSize(scaled_width, scaled_height)
+
+                # 设置滚动条位置
+                if scroll_area:
+                    scroll_area.horizontalScrollBar().setValue(int(new_scroll_x))
+                    scroll_area.verticalScrollBar().setValue(int(new_scroll_y))
+
+                # 通知滚动区域内容大小已改变
+                self.updateGeometry()
 
             self.update()
         else:
@@ -471,29 +533,29 @@ class ImageLabel(QLabel):
         image_dir = os.path.dirname(self.file_path)
         image_name = os.path.basename(self.file_path)
         image_name_without_ext = os.path.splitext(image_name)[0]
-        
+
         # 按优先级查找标注文件
         annotation_paths = []
-        
+
         # 1. 先找图片同一个路径下面的labels路径下有没有标注文件
         labels_dir_same_level = os.path.join(image_dir, 'labels')
         if os.path.exists(labels_dir_same_level):
             annotation_path = os.path.join(labels_dir_same_level, image_name_without_ext + '.txt')
             if os.path.exists(annotation_path):
                 annotation_paths.append(annotation_path)
-        
+
         # 2. 再找图片同一个路径下面有没有同名标注文件
         same_dir_annotation = os.path.join(image_dir, image_name_without_ext + '.txt')
         if os.path.exists(same_dir_annotation):
             annotation_paths.append(same_dir_annotation)
-        
+
         # 3. 再找图片所属目录同级目录下面有没有同名标注文件
         parent_dir = os.path.dirname(image_dir)
         if parent_dir:
             same_level_annotation = os.path.join(parent_dir, image_name_without_ext + '.txt')
             if os.path.exists(same_level_annotation):
                 annotation_paths.append(same_level_annotation)
-        
+
         # 4. 再找图片所属目录同级目录下面的labels路径下面有没有标注文件
         if parent_dir:
             labels_dir_parent_level = os.path.join(parent_dir, 'labels')
@@ -501,46 +563,46 @@ class ImageLabel(QLabel):
                 annotation_path = os.path.join(labels_dir_parent_level, image_name_without_ext + '.txt')
                 if os.path.exists(annotation_path):
                     annotation_paths.append(annotation_path)
-        
+
         # 使用找到的第一个有效的标注文件
         annotation_file = None
         for path in annotation_paths:
             if os.path.exists(path):
                 annotation_file = path
                 break
-        
+
         # 加载类别名称
         classes_file = None
-        
+
         # 按优先级查找类别文件
         classes_paths = []
-        
+
         # 查找classes.txt文件的路径
         if annotation_file:
             # 如果找到了标注文件，优先在标注文件同目录下查找
             classes_paths.append(os.path.join(os.path.dirname(annotation_file), 'classes.txt'))
-        
+
         # 在labels目录下查找
         if os.path.exists(labels_dir_same_level):
             classes_paths.append(os.path.join(labels_dir_same_level, 'classes.txt'))
-        
+
         # 在图片同级目录下查找
         classes_paths.append(os.path.join(image_dir, 'classes.txt'))
-        
+
         # 在图片上级目录下查找
         if parent_dir:
             classes_paths.append(os.path.join(parent_dir, 'classes.txt'))
-            
+
             # 在上级目录的labels目录下查找
             if os.path.exists(labels_dir_parent_level):
                 classes_paths.append(os.path.join(labels_dir_parent_level, 'classes.txt'))
-        
+
         # 使用找到的第一个有效的类别文件
         for path in classes_paths:
             if os.path.exists(path):
                 classes_file = path
                 break
-        
+
         # 加载类别名称
         if classes_file and os.path.exists(classes_file):
             with open(classes_file, 'r', encoding='utf-8') as f:
@@ -1342,7 +1404,7 @@ class ImageLabel(QLabel):
             # 如果没有预缩放的图片，使用旧的方式（后备方案）
             # 获取设备像素比率
             device_pixel_ratio = self.devicePixelRatioF()
-            
+
             scaled_pixmap = self.pixmap.scaled(
                 int(self.pixmap.width() * self.scale_factor * device_pixel_ratio),
                 int(self.pixmap.height() * self.scale_factor * device_pixel_ratio),
@@ -1478,24 +1540,20 @@ class ImageLabel(QLabel):
 
         # 绘制当前多边形的标签
         if current_polygon.label and len(current_polygon.points) > 0:
-            # 计算多边形的中心点（缩放后）
-            scaled_points = []
-            for point in current_polygon.points:
-                scaled_points.append(QPoint(
-                    int(point.x() * self.scale_factor) + x,
-                    int(point.y() * self.scale_factor) + y
-                ))
-
-            center_x = sum(point.x() for point in scaled_points) / len(scaled_points)
-            center_y = sum(point.y() for point in scaled_points) / len(scaled_points)
+            # 获取第一个点作为标签显示位置
+            first_point = current_polygon.points[0]
+            scaled_first_point = QPoint(
+                int(first_point.x() * self.scale_factor) + x,
+                int(first_point.y() * self.scale_factor) + y
+            )
 
             # 设置文本颜色
             painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
-            # 绘制标签文本
+            # 绘制标签文本（显示在第一个点的左上方，进一步减小距离）
             font = QFont()
             font.setPointSize(10)  # 将字体大小从14改为10
             painter.setFont(font)
-            painter.drawText(int(center_x), int(center_y), current_polygon.label)
+            painter.drawText(scaled_first_point.x() - 4, scaled_first_point.y() - 4, current_polygon.label)
 
         painter.end()
 
@@ -1516,6 +1574,7 @@ class ImageLabel(QLabel):
         self.pixmap = QPixmap(file_path)
         self.scaled_pixmap = None  # 清除缓存的缩放图片
         self.scale_factor = 1.0  # 重置缩放因子
+        self.user_scaled = False  # 重置用户缩放标志
         self.zoom_count = 0  # 重置缩放计数器
 
         # 重置注解相关属性
@@ -2026,18 +2085,22 @@ class ImagePreviewPanel(QWidget):
 
         # 如果有尺寸参数，则设置分割器的尺寸
         if self.panel_width is not None and self.panel_height is not None:
-            self.main_splitter.setMinimumWidth(self.panel_width)
-            self.main_splitter.setMinimumHeight(self.panel_height)
+            # 确保总宽度不超过指定宽度，预留一些空间避免滚动条
+            total_width = self.panel_width - 20  # 预留20像素空间
+            total_height = self.panel_height - 20  # 预留20像素空间
+
+            self.main_splitter.setMinimumWidth(total_width)
+            self.main_splitter.setMinimumHeight(total_height)
 
             # 计算图片容器和详情面板的宽度分配
             # 考虑到详情面板需要一定的宽度来显示信息，我们给它20%的空间
-            image_container_width = int(self.panel_width * 0.8)  # 80%宽度给图片容器
-            details_panel_width = int(self.panel_width * 0.2)  # 20%宽度给详情面板
+            details_panel_width = int(total_width * 0.2)  # 20%宽度给详情面板
+            image_container_width = total_width - details_panel_width  # 剩余宽度给图片容器
 
             # 确保详情面板有最小宽度
             if details_panel_width < 200:
                 details_panel_width = 200
-                image_container_width = self.panel_width - details_panel_width
+                image_container_width = total_width - details_panel_width
 
             # 设置分割器大小
             self.main_splitter.setSizes([image_container_width, details_panel_width])
@@ -2110,7 +2173,7 @@ class ImagePreviewPanel(QWidget):
 
         # 创建滚动区域用于显示大图像
         from PyQt5.QtWidgets import QScrollArea
-        self.scroll_area = QScrollArea()
+        self.scroll_area = CustomScrollArea()
         self.scroll_area.setWidgetResizable(False)  # 设置为False，让ImageLabel控制自己的大小
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -2144,6 +2207,63 @@ class ImagePreviewPanel(QWidget):
         layout.addWidget(self.main_splitter)
         self.setLayout(layout)
 
+    def keyPressEvent(self, event):
+        """
+        处理键盘按键事件
+
+        Args:
+            event: 键盘事件
+        """
+        # 检查是否按下了DELETE键
+        if event.key() == Qt.Key_Delete:
+            # 检查是否有选中的标注框
+            if self.image_label.has_selected_annotation():
+                # 删除当前选中的标注框
+                self.image_label.delete_selected()
+                # 更新详情面板
+                annotations = self.image_label.get_annotations()
+                self.details_panel.update_annotations(annotations)
+                event.accept()
+                return
+            else:
+                # 如果没有选中标注框，将事件向上传递
+                super().keyPressEvent(event)
+                return
+
+        # 检查是否按下了W键，开启全局标注模式
+        if event.key() == Qt.Key_W:
+            if not self.image_label.annotation_mode:
+                # 弹出输入框获取标注标签
+                label, ok = QInputDialog.getText(self, "全局标注模式", "请输入标注标签:")
+                if ok and label:
+                    # 启动全局标注模式
+                    ImageLabel.global_annotation_mode = True
+                    ImageLabel.global_annotation_label = label
+                    self.image_label.annotation_mode = True
+                    self.image_label.show_annotation_hint = True
+                    self.image_label.current_annotation_label = label
+                    self.image_label.setCursor(Qt.CrossCursor)
+                    self.image_label.update()
+                    # 更新详情面板
+                    annotations = self.image_label.get_annotations()
+                    self.details_panel.update_annotations(annotations)
+            event.accept()
+            return
+
+        # 检查是否按下了Q键，退出标注模式
+        elif event.key() == Qt.Key_Q:
+            if self.image_label.annotation_mode:
+                # 退出标注模式
+                self.image_label.exit_annotation_mode()
+                # 更新详情面板
+                annotations = self.image_label.get_annotations()
+                self.details_panel.update_annotations(annotations)
+            event.accept()
+            return
+
+        # 其他按键事件交给父类处理
+        super().keyPressEvent(event)
+
     def set_panel_size(self, width, height):
         """
         设置面板尺寸
@@ -2153,10 +2273,14 @@ class ImagePreviewPanel(QWidget):
             height (int): 面板高度
         """
         try:
+            # 预留空间给工具栏和边距，避免滚动条出现
+            reserved_height = 60  # 工具栏高度 + 边距
+            available_height = height - reserved_height
+
             # 设置主分割器的尺寸
             self.main_splitter.setMinimumWidth(width)
-            self.main_splitter.setMinimumHeight(height)
-            self.main_splitter.resize(width, height)
+            self.main_splitter.setMinimumHeight(available_height)
+            self.main_splitter.resize(width, available_height)
 
             # 计算图片容器和详情面板的宽度分配
             # 考虑到详情面板需要一定的宽度来显示信息，我们给它20%的空间
@@ -2178,7 +2302,6 @@ class ImagePreviewPanel(QWidget):
             logger.debug(f"设置图片预览面板尺寸: {width}x{height}")
         except Exception as e:
             logger.error(f"设置图片预览面板尺寸时发生异常: {str(e)}")
-            logger.error(f"异常详情:\n{traceback.format_exc()}")
 
     def set_fullscreen(self, fullscreen):
         """
@@ -2214,6 +2337,18 @@ class ImagePreviewPanel(QWidget):
         # 设置焦点到预览面板，确保能接收键盘事件
         self.setFocus()
         return True
+
+    def set_rectangle_mode(self):
+        """
+        设置为矩形模式
+        """
+        self.image_label.set_mode('rectangle')
+
+    def set_polygon_mode(self):
+        """
+        设置为多边形模式
+        """
+        self.image_label.set_mode('polygon')
 
     def select_annotation(self, annotation_data):
         """
@@ -2258,69 +2393,82 @@ class ImagePreviewPanel(QWidget):
         annotations = self.image_label.get_annotations()
         self.details_panel.update_annotations(annotations)
 
-    def clear_annotation_selection(self):
-        """
-        清除图片上的标注选中状态
-        """
-        self.image_label.clear_selection()
+
+class CustomScrollArea(QScrollArea):
+    """自定义滚动区域，用于控制滚动灵敏度"""
+
+
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # 设置滚动步长因子，控制滚动灵敏度
+        self.horizontal_scroll_factor = 0.5  # 水平滚动步长因子，值越小滚动越慢
+        self.vertical_scroll_factor = 1.0    # 垂直滚动步长因子
 
     def wheelEvent(self, event):
-        """
-        处理鼠标滚轮事件，支持图片缩放
-
-        Args:
-            event: 滚轮事件
-        """
-        super().wheelEvent(event)
-
-    def keyPressEvent(self, event):
-        """
-        处理键盘按键事件
-
-        Args:
-            event: 键盘事件
-        """
-        # 处理Delete键删除当前预览的图片
-        if event.key() == Qt.Key_Delete:
-            # 检查是否有选中的标注元素
-            if self.image_label.has_selected_annotation():
-                # 有选中的标注元素，删除选中的标注
-                self.image_label.delete_selected()
+        """处理鼠标滚轮事件，调整滚动灵敏度"""
+        # 检查是否是Ctrl/Cmd+滚轮组合，如果是则传递给子组件处理
+        if event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier):
+            # 直接将事件传递给子组件（ImageLabel）处理
+            if self.widget() and hasattr(self.widget(), 'wheelEvent'):
+                self.widget().wheelEvent(event)
             else:
-                super().keyPressEvent(event)
-        # 处理W键开启标注模式
-        elif event.key() == Qt.Key_W:
-            # 检查是否已经开启了标注模式
-            if not self.image_label.annotation_mode:
-                # 弹出输入框让用户输入标注内容（支持多个标签）
-                label, ok = QInputDialog.getText(self, '标注内容设置', '请输入标注内容(多个标签用逗号分隔):')
-                if ok and label:
-                    # 设置当前标注内容
-                    self.image_label.current_annotation_label = label
-                    # 启动标注模式
-                    self.image_label.start_annotation_mode()
-            else:
-                # 如果已经开启了标注模式，提示用户
-                from PyQt5.QtWidgets import QMessageBox
-                QMessageBox.information(self, '提示', '标注模式已经开启')
-        # 处理Q键退出标注模式（仅在图片模式下有效）
-        elif event.key() == Qt.Key_Q:
-            # 只有在当前显示的是图片时才允许退出标注模式
-            if self.current_file_path and self.image_label.pixmap:
-                self.image_label.exit_annotation_mode()
-                # 清除当前标注内容
-                self.image_label.current_annotation_label = ""
+                super().wheelEvent(event)
         else:
-            super().keyPressEvent(event)
+            # 获取滚动条
+            horizontal_scrollbar = self.horizontalScrollBar()
+            vertical_scrollbar = self.verticalScrollBar()
 
-    def set_rectangle_mode(self):
-        """
-        设置为矩形模式
-        """
-        self.image_label.set_mode('rectangle')
+            # 检查是否按住了Shift键，按住Shift键时进行水平滚动
+            if event.modifiers() & Qt.ShiftModifier:
+                # 检查是否有水平滚动条且可见
+                if horizontal_scrollbar.isVisible():
+                    # 调试信息
+                    angle_delta_y = event.angleDelta().y()
+                    angle_delta_x = event.angleDelta().x()
 
-    def set_polygon_mode(self):
-        """
-        设置为多边形模式
-        """
-        self.image_label.set_mode('polygon')
+                    # 计算滚动步长，优先使用x轴的值，如果没有则使用y轴的值
+                    scroll_step = (angle_delta_x if angle_delta_x != 0 else angle_delta_y) * self.horizontal_scroll_factor
+                    new_value = horizontal_scrollbar.value() - scroll_step
+
+                    # 确保滚动值在有效范围内
+                    min_value = horizontal_scrollbar.minimum()
+                    max_value = horizontal_scrollbar.maximum()
+                    new_value = max(min_value, min(new_value, max_value))
+
+                    horizontal_scrollbar.setValue(int(new_value))
+                    event.accept()
+                else:
+                    super().wheelEvent(event)
+            else:
+                # 检查是否有垂直滚动条且可见
+                if vertical_scrollbar.isVisible():
+                    # 垂直滚动
+                    # 计算滚动步长
+                    scroll_step = event.angleDelta().y() * self.vertical_scroll_factor
+                    new_value = vertical_scrollbar.value() - scroll_step
+
+                    # 确保滚动值在有效范围内
+                    min_value = vertical_scrollbar.minimum()
+                    max_value = vertical_scrollbar.maximum()
+                    new_value = max(min_value, min(new_value, max_value))
+
+                    vertical_scrollbar.setValue(int(new_value))
+                    event.accept()
+                else:
+                    # 如果没有垂直滚动条，但有水平滚动条，则进行水平滚动
+                    if horizontal_scrollbar.isVisible():
+                        # 计算滚动步长
+                        scroll_step = event.angleDelta().y() * self.horizontal_scroll_factor
+                        new_value = horizontal_scrollbar.value() - scroll_step
+
+                        # 确保滚动值在有效范围内
+                        min_value = horizontal_scrollbar.minimum()
+                        max_value = horizontal_scrollbar.maximum()
+                        new_value = max(min_value, min(new_value, max_value))
+
+                        horizontal_scrollbar.setValue(int(new_value))
+                        event.accept()
+                    else:
+                        super().wheelEvent(event)
+

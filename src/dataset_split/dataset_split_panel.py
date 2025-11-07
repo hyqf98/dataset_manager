@@ -56,12 +56,12 @@ class DatasetSplitter:
                 os.makedirs(images_dir, exist_ok=True)
                 os.makedirs(labels_dir, exist_ok=True)
 
-            # 获取所有图片文件
+            # 获取所有图片文件（递归查找所有层级）
             image_files = []
+            all_files = []
             for root, dirs, files in os.walk(dataset_path):
-                # 跳过labels目录
-                if "labels" in [os.path.basename(d) for d in dirs]:
-                    dirs.remove("labels")
+                for file in files:
+                    all_files.append(os.path.join(root, file))
                     
                 for file in files:
                     if file.lower().endswith(('.png', '.jpg', '.jpeg')):
@@ -94,9 +94,20 @@ class DatasetSplitter:
                     shutil.copy2(image_file, target_image_path)
 
                     # 复制对应的标签文件（如果存在）
+                    # 递归查找所有层级中与图片同名的标注文件
                     image_base_name = os.path.splitext(image_name)[0]
-                    label_file = os.path.join(dataset_path, "labels", f"{image_base_name}.txt")
-                    if os.path.exists(label_file):
+                    label_file = None
+                    
+                    # 在整个数据集目录中递归查找同名的标注文件
+                    for root, dirs, files in os.walk(dataset_path):
+                        for file in files:
+                            if file == f"{image_base_name}.txt":
+                                label_file = os.path.join(root, file)
+                                break
+                        if label_file:
+                            break
+                    
+                    if label_file and os.path.exists(label_file):
                         target_label_path = os.path.join(target_dir, "labels", f"{image_base_name}.txt")
                         shutil.copy2(label_file, target_label_path)
 
@@ -134,23 +145,37 @@ class DatasetSplitter:
             return ["default"]
 
         # 遍历所有标签文件，提取类别ID
+        # 递归查找整个数据集目录中的所有标注文件
         class_ids = set()
-        for root, dirs, files in os.walk(labels_dir):
+        for root, dirs, files in os.walk(dataset_path):
             for file in files:
                 if file.endswith(".txt"):
                     with open(os.path.join(root, file), 'r') as f:
                         for line in f:
                             if line.strip():
-                                class_id = int(line.split()[0])
-                                class_ids.add(class_id)
+                                try:
+                                    class_id = int(line.split()[0])
+                                    class_ids.add(class_id)
+                                except (ValueError, IndexError):
+                                    # 忽略无效的标注行
+                                    continue
 
         # 尝试从classes.txt读取类别名称
-        classes_file = os.path.join(labels_dir, "classes.txt")
-        if os.path.exists(classes_file):
+        # 递归查找整个数据集目录中的classes.txt文件
+        classes_file = None
+        for root, dirs, files in os.walk(dataset_path):
+            for file in files:
+                if file == "classes.txt":
+                    classes_file = os.path.join(root, file)
+                    break
+            if classes_file:
+                break
+        
+        if classes_file and os.path.exists(classes_file):
             with open(classes_file, 'r') as f:
                 class_names = [line.strip() for line in f.readlines() if line.strip()]
                 # 确保类别数量与ID数量匹配
-                if len(class_names) <= max(class_ids) if class_ids else 0:
+                if class_ids and len(class_names) <= max(class_ids):
                     logger.warning("classes.txt中的类别数量不足，将补充默认类别名称")
                     while len(class_names) <= max(class_ids):
                         class_names.append(f"class_{len(class_names)}")
