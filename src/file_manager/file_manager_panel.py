@@ -1472,20 +1472,28 @@ class FileManagerPanel(QWidget):
         打开回收站对话框
         """
         try:
-            # 如果没有导入的根路径，使用当前目录
-            if self.imported_root_paths:
-                root_path = self.imported_root_paths[0]  # 使用第一个导入的路径作为基础
+            # 获取当前选中的文件路径，以确定应该打开哪个回收站
+            selected_file_path = self.ui.get_selected_path()
+            
+            # 确定回收站路径
+            if selected_file_path and os.path.exists(selected_file_path):
+                # 根据选中的文件确定其所属的根路径
+                root_path = self.get_root_path_for_file(selected_file_path)
             else:
-                root_path = QDir.currentPath()
-
+                # 如果没有选中文件或文件不存在，使用第一个导入的路径
+                if self.imported_root_paths:
+                    root_path = self.imported_root_paths[0]
+                else:
+                    root_path = QDir.currentPath()
+            
             # 构造回收站路径
             recycle_bin_path = os.path.join(root_path, self.delete_folder)
-
+            
             # 如果回收站不存在则创建
             if not os.path.exists(recycle_bin_path):
                 os.makedirs(recycle_bin_path)
                 logger.debug(f"创建回收站目录: {recycle_bin_path}")
-
+            
             # 打开回收站对话框
             dialog = RecycleBinDialog(recycle_bin_path, self)
             dialog.exec_()
@@ -1503,21 +1511,54 @@ class FileManagerPanel(QWidget):
             file_path (str): 要移动的文件或文件夹路径
         """
         try:
-            # 如果没有导入的根路径，使用当前目录
-            if self.imported_root_paths:
-                root_path = self.imported_root_paths[0]  # 使用第一个导入的路径作为基础
-            else:
-                root_path = QDir.currentPath()
-
+            # 确定文件所属的根路径
+            root_path = self.get_root_path_for_file(file_path)
+            
             # 构造回收站路径
             recycle_bin_path = os.path.join(root_path, self.delete_folder)
-
+            
             # 移动文件到回收站
             self.events.on_file_delete(file_path, recycle_bin_path)
         except Exception as e:
             logger.error(f"移动文件到回收站时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"移动文件到回收站时发生异常: {str(e)}")
+
+    def get_root_path_for_file(self, file_path):
+        """
+        根据文件路径确定其所属的根路径
+
+        Args:
+            file_path (str): 文件路径
+
+        Returns:
+            str: 文件所属的根路径
+        """
+        try:
+            # 如果没有导入的根路径，使用当前目录
+            if not self.imported_root_paths:
+                return QDir.currentPath()
+                
+            # 标准化文件路径
+            normalized_file_path = os.path.normpath(file_path)
+            
+            # 查找文件路径匹配的根路径
+            for root_path in self.imported_root_paths:
+                normalized_root_path = os.path.normpath(root_path)
+                # 检查文件是否在该根路径下
+                if (normalized_file_path == normalized_root_path or 
+                    normalized_file_path.startswith(normalized_root_path + os.sep) or
+                    normalized_file_path.startswith(normalized_root_path + os.path.sep)):
+                    return root_path
+                    
+            # 如果没有找到匹配的根路径，使用第一个导入的路径作为默认值
+            # 这是为了保持向后兼容性
+            return self.imported_root_paths[0]
+        except Exception as e:
+            logger.error(f"确定文件所属根路径时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            # 出现异常时使用第一个导入的路径
+            return self.imported_root_paths[0] if self.imported_root_paths else QDir.currentPath()
 
     def refresh_view(self):
         """
@@ -2090,6 +2131,7 @@ class FileManagerPanel(QWidget):
             logger.error(f"选择后一个文件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
 
+
     def keyPressEvent(self, a0):
         """
         处理键盘按键事件
@@ -2153,6 +2195,136 @@ class FileManagerPanel(QWidget):
             logger.error(f"检查文件是否支持预览时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             return False
+
+    def get_supported_files_list(self):
+        """
+        获取所有支持预览的文件列表，按照文件树中的显示顺序
+        
+        Returns:
+            list: 支持预览的文件路径列表
+        """
+        try:
+            if not self.ui or not self.ui.model or not self.ui.proxy_model or not self.ui.tree_view:
+                return []
+                
+            supported_files = []
+            
+            # 从树视图的根索引开始遍历
+            root_index = self.ui.tree_view.rootIndex()
+            self._collect_supported_files_recursive(self.ui.proxy_model, self.ui.model, root_index, supported_files)
+            
+            return supported_files
+        except Exception as e:
+            logger.error(f"获取支持的文件列表时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            return []
+
+    def _collect_supported_files_recursive(self, proxy_model, source_model, proxy_index, supported_files):
+        """
+        递归收集支持预览的文件
+        
+        Args:
+            proxy_model: 代理模型
+            source_model: 源文件系统模型
+            proxy_index: 当前代理索引
+            supported_files: 支持的文件列表
+        """
+        try:
+            # 如果索引无效，获取根索引下的所有子项
+            if not proxy_index.isValid():
+                # 遍历根索引下的所有行
+                row_count = proxy_model.rowCount()
+                for row in range(row_count):
+                    child_proxy_index = proxy_model.index(row, 0)
+                    self._collect_supported_files_recursive(proxy_model, source_model, child_proxy_index, supported_files)
+                return
+                
+            # 将代理索引映射到源索引
+            source_index = proxy_model.mapToSource(proxy_index)
+            if not source_index.isValid():
+                return
+                
+            # 获取文件路径
+            file_path = source_model.filePath(source_index)
+            
+            # 检查是否是文件且支持预览
+            if os.path.isfile(file_path) and self.is_supported_file(file_path):
+                supported_files.append(file_path)
+                
+            # 递归处理子项
+            rows = proxy_model.rowCount(proxy_index)
+            for row in range(rows):
+                child_index = proxy_model.index(row, 0, proxy_index)
+                self._collect_supported_files_recursive(proxy_model, source_model, child_index, supported_files)
+        except Exception as e:
+            logger.error(f"递归收集支持的文件时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+    def get_current_file_position_info(self, file_path):
+        """
+        获取当前文件在文件列表中的位置信息
+        
+        Args:
+            file_path (str): 当前文件路径
+            
+        Returns:
+            dict: 包含current_position和total_files的字典
+        """
+        try:
+            # 获取所有支持预览的文件列表
+            supported_files = self.get_supported_files_list()
+            
+            # 查找当前文件在列表中的位置
+            try:
+                current_position = supported_files.index(file_path) + 1  # 位置从1开始计数
+            except ValueError:
+                current_position = -1
+                
+            return {
+                'current_position': current_position,
+                'total_files': len(supported_files)
+            }
+        except Exception as e:
+            logger.error(f"获取当前文件位置信息时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            return {
+                'current_position': -1,
+                'total_files': 0
+            }
+
+    def get_current_selected_file(self):
+        """
+        获取当前选中的文件路径
+        
+        Returns:
+            str: 当前选中的文件路径，如果没有选中则返回None
+        """
+        try:
+            if not self.ui or not self.ui.tree_view or not self.ui.model or not self.ui.proxy_model:
+                return None
+                
+            # 获取当前选中的索引
+            current_index = self.ui.tree_view.currentIndex()
+            if not current_index.isValid():
+                return None
+                
+            # 将代理索引映射到源索引
+            source_index = self.ui.proxy_model.mapToSource(current_index)
+            if not source_index.isValid():
+                return None
+                
+            # 获取文件路径
+            file_path = self.ui.model.filePath(source_index)
+            
+            # 检查是否是文件且支持预览
+            if os.path.isfile(file_path) and self.is_supported_file(file_path):
+                return file_path
+                
+            return None
+        except Exception as e:
+            logger.error(f"获取当前选中文件时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            return None
 
     def rename_file_or_folder(self, file_path):
         """

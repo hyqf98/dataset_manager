@@ -158,10 +158,29 @@ class MainWindow(QMainWindow):
             
             # 连接预览面板的全屏模式切换信号
             self.preview_panel.toggle_fullscreen.connect(self.toggle_fullscreen_mode)
+            
+            # 连接文件管理器的文件选中信号到窗口标题更新
+            self.file_manager_panel.events.file_selected.connect(self.on_file_manager_file_selected)
         except Exception as e:
             logger.error(f"设置信号与槽连接时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             raise
+
+    def on_file_manager_file_selected(self, file_path):
+        """
+        处理文件管理器中文件选中事件，更新窗口标题
+
+        Args:
+            file_path (str): 选中的文件路径
+        """
+        try:
+            if file_path and os.path.exists(file_path):
+                # 更新窗口标题显示当前文件信息
+                self.update_window_title(file_path)
+                logger.debug(f"处理文件管理器文件选中事件: {file_path}")
+        except Exception as e:
+            logger.error(f"处理文件管理器文件选中事件时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
 
     def create_menu_bar(self):
         """
@@ -245,30 +264,154 @@ class MainWindow(QMainWindow):
         try:
             if file_path and os.path.exists(file_path):
                 self.preview_panel.preview_file(file_path)
+                # 更新窗口标题显示当前文件信息
+                self.update_window_title(file_path)
                 logger.debug(f"处理文件选中事件: {file_path}")
         except Exception as e:
             logger.error(f"处理文件选中事件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
 
-    def on_preview_file_deleted(self, file_path):
+    def update_window_title(self, file_path):
         """
-        处理预览面板中删除文件的事件
-
+        更新窗口标题，显示当前文件信息
+        
         Args:
-            file_path (str): 要删除的文件路径
+            file_path (str): 当前选中的文件路径
         """
         try:
-            # 确认操作
-            reply = QMessageBox.question(self, "确认", f"确定要删除 '{file_path}' 吗?\n(文件将被移动到回收站)",
-                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)  # type: ignore
-            if reply == QMessageBox.StandardButton.Yes:
-                # 执行删除操作
-                self.file_manager_panel.move_to_recycle_bin(file_path)
-                logger.info(f"删除文件: {file_path}")
+            # 获取文件列表和当前文件位置
+            file_info = self.file_manager_panel.get_current_file_position_info(file_path)
+            if file_info and file_info['current_position'] != -1:
+                file_name = os.path.basename(file_path)
+                current_position = file_info['current_position']
+                total_files = file_info['total_files']
+                self.setWindowTitle(f'数据集管理器 - {file_name} ({current_position}/{total_files})')
+            else:
+                # 如果无法获取位置信息，只显示文件名
+                file_name = os.path.basename(file_path)
+                self.setWindowTitle(f'数据集管理器 - {file_name}')
         except Exception as e:
-            logger.error(f"处理预览面板文件删除事件时发生异常: {str(e)}")
+            logger.error(f"更新窗口标题时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
-            QMessageBox.critical(self, "错误", f"处理文件删除事件时发生异常: {str(e)}")
+            # 出现异常时恢复默认标题
+            self.setWindowTitle('数据集管理器')
+
+    def get_file_position_info(self, file_path):
+        """
+        获取文件在列表中的位置信息
+        
+        Args:
+            file_path (str): 当前文件路径
+            
+        Returns:
+            dict: 包含current_position和total_files的字典，如果出错则返回None
+        """
+        try:
+            if not hasattr(self, 'file_manager_panel') or not file_path:
+                return None
+                
+            return self.file_manager_panel.get_current_file_position_info(file_path)
+        except Exception as e:
+            logger.error(f"获取文件位置信息时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            return None
+
+    def collect_supported_files(self, source_model, proxy_model):
+        """
+        收集所有支持预览的文件
+        
+        Args:
+            source_model: 源文件系统模型
+            proxy_model: 代理模型
+            
+        Returns:
+            list: 支持预览的文件信息列表
+        """
+        try:
+            supported_files = []
+            
+            # 使用文件管理器面板的方法获取支持的文件列表
+            if hasattr(self, 'file_manager_panel'):
+                return self.file_manager_panel.get_supported_files_list()
+            
+            # 如果无法使用文件管理器面板的方法，则使用旧方法
+            # 遍历代理模型中的所有项目
+            self._collect_files_recursive(proxy_model, source_model, proxy_model.index(0, 0), supported_files)
+            
+            return supported_files
+        except Exception as e:
+            logger.error(f"收集支持的文件时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            return []
+
+    def _collect_files_recursive(self, proxy_model, source_model, proxy_index, supported_files):
+        """
+        递归收集支持预览的文件
+        
+        Args:
+            proxy_model: 代理模型
+            source_model: 源文件系统模型
+            proxy_index: 当前代理索引
+            supported_files: 支持的文件列表
+        """
+        try:
+            # 检查索引是否有效
+            if not proxy_index.isValid():
+                return
+                
+            # 将代理索引映射到源索引
+            source_index = proxy_model.mapToSource(proxy_index)
+            if not source_index.isValid():
+                return
+                
+            # 获取文件路径
+            file_path = source_model.filePath(source_index)
+            
+            # 检查是否是文件且支持预览
+            if os.path.isfile(file_path) and self.is_supported_file(file_path):
+                supported_files.append({
+                    'path': file_path,
+                    'name': os.path.basename(file_path)
+                })
+                
+            # 递归处理子项
+            rows = proxy_model.rowCount(proxy_index)
+            for row in range(rows):
+                child_index = proxy_model.index(row, 0, proxy_index)
+                self._collect_files_recursive(proxy_model, source_model, child_index, supported_files)
+        except Exception as e:
+            logger.error(f"递归收集文件时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+    def is_supported_file(self, file_path):
+        """
+        检查文件是否支持预览
+        
+        Args:
+            file_path (str): 文件路径
+            
+        Returns:
+            bool: 是否支持预览
+        """
+        try:
+            if not os.path.isfile(file_path):
+                return False
+                
+            # 获取文件扩展名
+            _, ext = os.path.splitext(file_path)
+            ext = ext.lower()
+            
+            # 支持的文件格式列表
+            supported_formats = [
+                '.jpg', '.jpeg', '.png', '.bmp', '.gif',  # 图片格式
+                '.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv'  # 视频格式
+            ]
+            
+            return ext in supported_formats
+        except Exception as e:
+            logger.error(f"检查文件是否支持预览时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            return False
 
     def on_file_manager_file_deleted(self, file_path):
         """
@@ -284,9 +427,73 @@ class MainWindow(QMainWindow):
             except RuntimeError as e:
                 logger.error(f"预览面板已被删除: {str(e)}")
             logger.debug("清空预览面板")
+            # 恢复默认窗口标题
+            self.setWindowTitle('数据集管理器')
         except Exception as e:
             logger.error(f"处理文件管理器文件删除事件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+    def on_preview_file_deleted(self, file_path):
+        """
+        处理预览面板中删除文件的事件
+
+        Args:
+            file_path (str): 要删除的文件路径
+        """
+        try:
+            # 确认操作
+            reply = QMessageBox.question(self, "确认", f"确定要删除 '{file_path}' 吗?\n(文件将被移动到回收站)",
+                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)  # type: ignore
+            if reply == QMessageBox.StandardButton.Yes:
+                # 保存当前文件路径用于后续处理
+                current_file_path = file_path
+                
+                # 执行删除操作
+                self.file_manager_panel.move_to_recycle_bin(file_path)
+                logger.info(f"删除文件: {file_path}")
+                
+                # 恢复默认窗口标题
+                self.setWindowTitle('数据集管理器')
+                
+                # 尝试选择下一个可用的资源进行显示
+                self.select_next_available_resource(current_file_path)
+        except Exception as e:
+            logger.error(f"处理预览面板文件删除事件时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"处理文件删除事件时发生异常: {str(e)}")
+
+    def select_next_available_resource(self, deleted_file_path):
+        """
+        选择下一个可用的资源进行显示，跳过文件夹
+
+        Args:
+            deleted_file_path (str): 已删除的文件路径
+        """
+        try:
+            # 让文件管理器选择下一个文件
+            self.file_manager_panel.select_next_file()
+            
+            # 获取当前选中的文件
+            current_file = self.file_manager_panel.get_current_selected_file()
+            
+            # 如果找到了支持的文件，则在预览面板中显示
+            if current_file and self.is_supported_file(current_file):
+                self.preview_panel.preview_file(current_file)
+                # 更新窗口标题
+                self.update_window_title(current_file)
+            else:
+                # 如果没有找到支持的文件，清空预览面板
+                self.preview_panel.show_message("请选择文件进行预览")
+                # 恢复默认窗口标题
+                self.setWindowTitle('数据集管理器')
+                
+        except Exception as e:
+            logger.error(f"选择下一个可用资源时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            # 出现异常时清空预览面板
+            self.preview_panel.show_message("请选择文件进行预览")
+            # 恢复默认窗口标题
+            self.setWindowTitle('数据集管理器')
 
     def open_data_source_panel(self):
         """
@@ -517,5 +724,19 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"窗口显示事件处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
