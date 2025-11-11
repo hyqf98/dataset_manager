@@ -97,12 +97,30 @@ def load_yolo_annotations(file_path, class_names, annotation_file=None):
         lines = f.readlines()
         
     # 获取图片尺寸
-    # 使用opencv获取图片尺寸
-    img = cv2.imread(file_path)
-    if img is not None:
-        img_height, img_width = img.shape[:2]
-    else:
-        # 如果无法读取图片，返回空的标注列表
+    # 解决Windows下中文路径和混合斜杠问题
+    try:
+        # 统一路径分隔符
+        normalized_path = os.path.normpath(file_path)
+        
+        # 尝试使用cv2.imread读取
+        img = cv2.imread(normalized_path)
+        
+        # 如果cv2.imread失败（通常是中文路径问题），使用cv2.imdecode
+        if img is None:
+            # 使用numpy和cv2.imdecode来处理中文路径
+            import numpy as np
+            with open(normalized_path, 'rb') as f:
+                img_data = np.frombuffer(f.read(), np.uint8)
+                img = cv2.imdecode(img_data, cv2.IMREAD_COLOR)
+        
+        if img is not None:
+            img_height, img_width = img.shape[:2]
+        else:
+            # 如果还是无法读取图片，返回空的标注列表
+            return annotations
+    except Exception as e:
+        # 如果读取图片失败，返回空的标注列表
+        print(f"读取图片失败: {file_path}, 错误: {str(e)}")
         return annotations
     
     # 解析每一行
