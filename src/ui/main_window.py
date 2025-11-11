@@ -208,7 +208,7 @@ class MainWindow(QMainWindow):
                     auto_annotation_menu.addAction(auto_annotation_action)
 
                 # 数据集划分菜单
-                dataset_split_menu = menubar.addMenu('数据集划分')
+                dataset_split_menu = menubar.addMenu('模型训练')
                 if dataset_split_menu:
                     dataset_split_action = QAction('数据集划分', self)
                     dataset_split_action.triggered.connect(self.open_dataset_split_panel)
@@ -611,7 +611,7 @@ class MainWindow(QMainWindow):
             
             # 创建对话框并显示面板
             dialog = QDialog(self)
-            dialog.setWindowTitle("数据集划分")
+            dialog.setWindowTitle("模型训练")
             layout = QHBoxLayout(dialog)
             layout.addWidget(self.dataset_split_panel)
             dialog.resize(600, 400)
@@ -724,6 +724,10 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"窗口显示事件处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+
+
+
 
 
 
