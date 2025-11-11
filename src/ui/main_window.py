@@ -448,19 +448,52 @@ class MainWindow(QMainWindow):
                 # 保存当前文件路径用于后续处理
                 current_file_path = file_path
                 
+                # 在删除前先查找下一个文件
+                next_file_path = self.file_manager_panel._find_next_file(file_path)
+                
                 # 执行删除操作
                 self.file_manager_panel.move_to_recycle_bin(file_path)
                 logger.info(f"删除文件: {file_path}")
                 
-                # 恢复默认窗口标题
-                self.setWindowTitle('数据集管理器')
-                
-                # 尝试选择下一个可用的资源进行显示
-                self.select_next_available_resource(current_file_path)
+                # 延迟选择并预览下一个文件（等待视图刷新完成）
+                if next_file_path:
+                    from PyQt5.QtCore import QTimer
+                    QTimer.singleShot(200, lambda: self._select_and_preview_next_file(next_file_path))
+                else:
+                    # 没有下一个文件，清空预览并恢复默认标题
+                    self.preview_panel.show_message("请选择文件进行预览")
+                    self.setWindowTitle('数据集管理器')
         except Exception as e:
             logger.error(f"处理预览面板文件删除事件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"处理文件删除事件时发生异常: {str(e)}")
+
+    def _select_and_preview_next_file(self, file_path):
+        """
+        选中并预览下一个文件
+        
+        Args:
+            file_path (str): 要预览的文件路径
+        """
+        try:
+            if file_path and os.path.exists(file_path):
+                # 选中文件
+                self.file_manager_panel._select_file_by_path(file_path)
+                # 预览文件
+                self.preview_panel.preview_file(file_path)
+                # 更新窗口标题
+                self.update_window_title(file_path)
+                logger.info(f"已选中并预览下一个文件: {file_path}")
+            else:
+                # 文件不存在，清空预览
+                self.preview_panel.show_message("请选择文件进行预览")
+                self.setWindowTitle('数据集管理器')
+        except Exception as e:
+            logger.error(f"选中并预览下一个文件时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            # 出现异常时清空预览面板
+            self.preview_panel.show_message("请选择文件进行预览")
+            self.setWindowTitle('数据集管理器')
 
     def select_next_available_resource(self, deleted_file_path):
         """

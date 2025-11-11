@@ -390,19 +390,23 @@ name = "dataset-manager"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "jinja2", marker = "(platform_machine == 'AMD64' and sys_platform == 'win32') or sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "openai", marker = "(platform_machine == 'AMD64' and sys_platform == 'win32') or sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "opencv-python", marker = "(platform_machine == 'AMD64' and sys_platform == 'win32') or sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pyqt5", marker = "(platform_machine == 'AMD64' and sys_platform == 'win32') or sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "pyqt5-qt5", marker = "(platform_machine == 'AMD64' and sys_platform == 'win32') or sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "pyyaml", marker = "(platform_machine == 'AMD64' and sys_platform == 'win32') or sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "ultralytics", marker = "(platform_machine == 'AMD64' and sys_platform == 'win32') or sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "jinja2", specifier = ">=3.1.0" },
     { name = "openai", specifier = ">=1.50.0" },
     { name = "opencv-python", specifier = ">=4.12.0.88" },
     { name = "pyqt5", specifier = ">=5.15.0,<5.15.12" },
     { name = "pyqt5-qt5", specifier = ">=5.15.2,<5.15.10" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "ultralytics", specifier = ">=8.3.0" },
 ]
 

@@ -41,9 +41,9 @@ class DatasetSplitter:
             if abs(total_ratio - 1.0) > 1e-6:
                 raise ValueError("训练集、验证集和测试集比例之和必须为1.0")
 
-            # 使用数据集文件夹名称作为导出名称
+            # 问题3修复：使用数据集文件夹名称_train作为导出名称
             dataset_name = os.path.basename(os.path.normpath(dataset_path))
-            output_path = os.path.join(output_path, dataset_name)
+            output_path = os.path.join(output_path, f"{dataset_name}_train")
 
             # 创建输出目录结构
             train_dir = os.path.join(output_path, "train")
@@ -56,10 +56,14 @@ class DatasetSplitter:
                 os.makedirs(images_dir, exist_ok=True)
                 os.makedirs(labels_dir, exist_ok=True)
 
-            # 获取所有图片文件（递归查找所有层级）
+            # 获取所有图片文件（递归查找所有层级，问题4修复：过滤delete文件夹）
             image_files = []
             all_files = []
             for root, dirs, files in os.walk(dataset_path):
+                # 问题4修复：过滤delete文件夹
+                if "delete" in dirs:
+                    dirs.remove("delete")
+                    
                 for file in files:
                     all_files.append(os.path.join(root, file))
 
@@ -129,7 +133,7 @@ class DatasetSplitter:
     @staticmethod
     def _get_class_names(dataset_path):
         """
-        从数据集中获取类别名称列表
+        从数据集中获取类别名称列表，优先从标注文件中提取类别ID，然后尝试从classes.txt映射实际名称
 
         Args:
             dataset_path (str): 数据集路径
@@ -137,33 +141,55 @@ class DatasetSplitter:
         Returns:
             list: 类别名称列表
         """
-        class_names = []
-        labels_dir = os.path.join(dataset_path, "labels")
-
-        if not os.path.exists(labels_dir):
-            logger.warning("未找到labels目录，将使用默认类别")
-            return ["default"]
-
-        # 遍历所有标签文件，提取类别ID
-        # 递归查找整个数据集目录中的所有标注文件
+        logger.info(f"开始从数据集中提取类别信息: {dataset_path}")
+        
+        # 第一步：从标注文件中提取所有类别ID
         class_ids = set()
+        annotation_file_count = 0
+        
+        # 递归查找所有标注文件（.txt 文件，但排除 classes.txt）
         for root, dirs, files in os.walk(dataset_path):
+            # 过滤 delete 文件夹
+            if "delete" in dirs:
+                dirs.remove("delete")
+                
             for file in files:
-                if file.endswith(".txt"):
-                    with open(os.path.join(root, file), 'r') as f:
-                        for line in f:
-                            if line.strip():
-                                try:
-                                    class_id = int(line.split()[0])
-                                    class_ids.add(class_id)
-                                except (ValueError, IndexError):
-                                    # 忽略无效的标注行
-                                    continue
-
-        # 尝试从classes.txt读取类别名称
-        # 递归查找整个数据集目录中的classes.txt文件
+                # 只处理 .txt 文件，但排除 classes.txt
+                if file.endswith(".txt") and file != "classes.txt":
+                    txt_file_path = os.path.join(root, file)
+                    try:
+                        with open(txt_file_path, 'r', encoding='utf-8') as f:
+                            for line in f:
+                                line = line.strip()
+                                if line:
+                                    try:
+                                        # YOLO 格式：class_id x y w h
+                                        parts = line.split()
+                                        if parts and len(parts) >= 5:
+                                            class_id = int(parts[0])
+                                            class_ids.add(class_id)
+                                    except (ValueError, IndexError):
+                                        # 忽略无效的标注行
+                                        continue
+                        annotation_file_count += 1
+                    except Exception as e:
+                        logger.debug(f"读取标注文件 {txt_file_path} 失败: {e}")
+                        continue
+        
+        logger.info(f"扫描了 {annotation_file_count} 个标注文件，找到类别ID: {sorted(class_ids)}")
+        
+        # 如果没有找到任何类别ID，返回默认值
+        if not class_ids:
+            logger.warning("未找到任何类别信息，使用默认类别 'default'")
+            return ["default"]
+        
+        # 第二步：尝试从 classes.txt 读取类别名称进行映射
         classes_file = None
         for root, dirs, files in os.walk(dataset_path):
+            # 过滤 delete 文件夹
+            if "delete" in dirs:
+                dirs.remove("delete")
+                
             for file in files:
                 if file == "classes.txt":
                     classes_file = os.path.join(root, file)
@@ -171,18 +197,32 @@ class DatasetSplitter:
             if classes_file:
                 break
 
+        # 按照 class_id 排序
+        sorted_ids = sorted(class_ids)
+        class_names = []
+        
         if classes_file and os.path.exists(classes_file):
-            with open(classes_file, 'r') as f:
-                class_names = [line.strip() for line in f.readlines() if line.strip()]
-                # 确保类别数量与ID数量匹配
-                if class_ids and len(class_names) <= max(class_ids):
-                    logger.warning("classes.txt中的类别数量不足，将补充默认类别名称")
-                    while len(class_names) <= max(class_ids):
-                        class_names.append(f"class_{len(class_names)}")
-        else:
-            # 如果没有classes.txt，使用默认命名
-            class_names = [f"class_{i}" for i in sorted(class_ids)] if class_ids else ["default"]
-
+            try:
+                with open(classes_file, 'r', encoding='utf-8') as f:
+                    all_class_names = [line.strip() for line in f.readlines() if line.strip()]
+                
+                # 根据标注文件中的类别ID，从classes.txt中提取对应的类别名称
+                for class_id in sorted_ids:
+                    if class_id < len(all_class_names):
+                        class_names.append(all_class_names[class_id])
+                    else:
+                        # 如果ID超出范围，使用默认命名
+                        class_names.append(f"class_{class_id}")
+                        logger.warning(f"类别ID {class_id} 超出 classes.txt 范围，使用默认名称")
+                
+                logger.info(f"从 {classes_file} 映射类别名称: {class_names}")
+                return class_names
+            except Exception as e:
+                logger.warning(f"读取 {classes_file} 失败: {e}，使用默认类别名称")
+        
+        # 如果没有 classes.txt 或读取失败，使用 class_id 生成类别名称
+        class_names = [f"class_{i}" for i in sorted_ids]
+        logger.info(f"未找到有效的 classes.txt，生成默认类别名称: {class_names}")
         return class_names
 
     @staticmethod
@@ -197,136 +237,140 @@ class DatasetSplitter:
         # 在train, val, test的labels目录下都生成classes.txt
         for split in ["train", "val", "test"]:
             labels_dir = os.path.join(output_path, split, "labels")
-            if os.path.exists(labels_dir):
-                classes_file = os.path.join(labels_dir, "classes.txt")
-                with open(classes_file, 'w', encoding='utf-8') as f:
-                    for class_name in class_names:
-                        f.write(f"{class_name}\n")
-                logger.info(f"classes.txt文件已生成: {classes_file}")
+            # 确保目录存在
+            os.makedirs(labels_dir, exist_ok=True)
+            
+            # 生成classes.txt文件
+            classes_file = os.path.join(labels_dir, "classes.txt")
+            with open(classes_file, 'w', encoding='utf-8') as f:
+                for class_name in class_names:
+                    f.write(f"{class_name}\n")
+            logger.info(f"classes.txt文件已生成: {classes_file}")
 
     @staticmethod
     def _generate_yaml_config(output_path, class_names):
         """
-        生成YOLO训练配置文件
+        生成YOLO训练配置文件，使用train/labels/classes.txt中的分类
 
         Args:
             output_path (str): 输出路径
-            class_names (list): 类别名称列表
+            class_names (list): 类别名称列表（作为备用）
         """
+        # 从 train/labels/classes.txt 读取分类
+        train_classes_file = os.path.join(output_path, "train", "labels", "classes.txt")
+        
+        if os.path.exists(train_classes_file):
+            with open(train_classes_file, 'r', encoding='utf-8') as f:
+                class_names = [line.strip() for line in f.readlines() if line.strip()]
+            logger.info(f"从 {train_classes_file} 读取分类: {class_names}")
+        else:
+            logger.warning(f"{train_classes_file} 不存在，使用默认分类")
+            if not class_names:
+                class_names = ["default"]
+        
         config = {
             'path': '.',  # 使用相对路径，数据集根目录就是当前目录
             'train': 'train/images',               # 训练集图片路径
             'val': 'val/images',                   # 验证集图片路径
             'test': 'test/images',                 # 测试集图片路径
             'nc': len(class_names),                # 类别数量
-            'names': class_names                   # 类别名称列表
+            'names': class_names                   # 类别名称列表（从 train/labels/classes.txt 中读取）
         }
 
         yaml_path = os.path.join(output_path, "train.yml")
         with open(yaml_path, 'w', encoding='utf-8') as f:
             yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
-        logger.info(f"YOLO配置文件已生成: {yaml_path}")
+        logger.info(f"YOLO配置文件已生成: {yaml_path}，类别: {class_names}")
 
     @staticmethod
     def generate_train_script(output_path, train_params=""):
         """
-        生成训练脚本
+        使用Jinja2模板引擎生成训练脚本，将用户自定义参数直接填充到train_args中
 
         Args:
             output_path (str): 输出路径
-            train_params (str): 训练参数
+            train_params (str): 训练参数，格式: "key1=value1 key2=value2"
         """
+        from jinja2 import Template
+        
         # 确保输出路径存在
         if not os.path.exists(output_path):
             os.makedirs(output_path)
 
-        # 生成train.py脚本
-        train_script_content = f"""#!/usr/bin/env python3
-# 训练脚本自动生成
-
-import os
-import sys
-import subprocess
-import argparse
-
-# 添加ultralytics到路径
-try:
-    from ultralytics import YOLO
-except ImportError:
-    print("请安装ultralytics: pip install ultralytics")
-    sys.exit(1)
-
-
-def train_model():
-    # 获取数据配置文件路径（使用相对路径）
-    data_yaml = 'train.yml'
-    
-    # 检查配置文件是否存在
-    if not os.path.exists(data_yaml):
-        print(f"配置文件不存在: {{data_yaml}}")
-        return
-    
-    # 创建模型实例
-    model = YOLO('yolov8n.pt')  # 默认使用yolov8n，可根据需要修改
-    
-    # 训练参数
-    train_args = {{
-        'data': data_yaml,
-        'epochs': 100,
-        'batch': 16,
-        'imgsz': 640,
-    }}
-    
-    # 解析自定义参数
-    if '{train_params}':
-        # 解析参数字符串
-        params_str = '{train_params}'
-        # 按空格分割参数
-        params_parts = params_str.split()
-        i = 0
-        while i < len(params_parts):
-            if params_parts[i].startswith('--'):
-                key = params_parts[i][2:]  # 移除--前缀
-                if i + 1 < len(params_parts):
-                    value = params_parts[i + 1]
-                    # 尝试转换为数字
-                    try:
-                        if '.' in value:
-                            value = float(value)
-                        else:
-                            value = int(value)
-                    except ValueError:
-                        pass  # 保持为字符串
-                    train_args[key] = value
-                    i += 2
-                else:
-                    i += 1
+        # 读取模板文件
+        template_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'train_template.py')
+        
+        if not os.path.exists(template_path):
+            logger.error(f"训练脚本模板不存在: {template_path}")
+            raise FileNotFoundError(f"训练脚本模板不存在: {template_path}")
+        
+        with open(template_path, 'r', encoding='utf-8') as f:
+            template_content = f.read()
+        
+        # 解析用户自定义参数
+        custom_params = {}
+        if train_params and train_params.strip():
+            # 解析格式: "key1=value1 key2=value2" 或 "key1 value1 key2 value2"
+            params_str = train_params.strip()
+            
+            # 尝试以 = 分隔的格式
+            if '=' in params_str:
+                # 格式: "key1=value1 key2=value2"
+                param_pairs = params_str.split()
+                for pair in param_pairs:
+                    if '=' in pair:
+                        key, value = pair.split('=', 1)
+                        key = key.strip()
+                        value = value.strip()
+                        
+                        # 尝试转换为数字
+                        try:
+                            # 验证是否为数字
+                            if '.' in value:
+                                custom_params[key] = float(value)
+                            else:
+                                custom_params[key] = int(value)
+                        except ValueError:
+                            # 字符串，在模板中需要加引号
+                            custom_params[key] = f"'{value}'"
             else:
-                i += 1
-    
-    print(f"开始训练模型，参数: {{train_args}}")
-    
-    # 开始训练
-    try:
-        model.train(**train_args)
-        print("训练完成!")
-    except Exception as e:
-        print(f"训练过程中发生错误: {{e}}")
-        import traceback
-        traceback.print_exc()
-
-
-if __name__ == '__main__':
-    train_model()
-"""
-
+                # 格式: "key1 value1 key2 value2"
+                params_parts = params_str.split()
+                i = 0
+                while i < len(params_parts):
+                    if i + 1 < len(params_parts):
+                        key = params_parts[i].strip()
+                        value = params_parts[i + 1].strip()
+                        
+                        # 尝试转换为数字
+                        try:
+                            if '.' in value:
+                                custom_params[key] = float(value)
+                            else:
+                                custom_params[key] = int(value)
+                        except ValueError:
+                            # 字符串，在模板中需要加引号
+                            custom_params[key] = f"'{value}'"
+                        
+                        i += 2
+                    else:
+                        i += 1
+        
+        # 使用Jinja2渲染模板
+        template = Template(template_content)
+        train_script_content = template.render(custom_params=custom_params if custom_params else None)
+        
         # 写入训练脚本文件（与train.yml同一路径下）
         train_script_path = os.path.join(output_path, "train.py")
         with open(train_script_path, 'w', encoding='utf-8') as f:
             f.write(train_script_content)
 
         logger.info(f"训练脚本已生成: {train_script_path}")
+        if custom_params:
+            logger.info(f"自定义参数: {custom_params}")
+        else:
+            logger.info("使用默认参数")
 
 
 class SplitWorker(QThread):
@@ -365,8 +409,9 @@ class SplitWorker(QThread):
             # 如果需要生成训练脚本
             if self.generate_script:
                 dataset_name = os.path.basename(os.path.normpath(self.dataset_path))
-                output_path = os.path.join(self.output_path, dataset_name)
-                splitter.generate_train_script(output_path, self.train_params)
+                # 使用与划分数据集相同的路径结构
+                output_path_with_suffix = os.path.join(self.output_path, f"{dataset_name}_train")
+                splitter.generate_train_script(output_path_with_suffix, self.train_params)
 
             self.split_finished.emit(True, "数据集划分完成" + ("并生成训练脚本" if self.generate_script else ""))
         except Exception as e:
@@ -874,7 +919,7 @@ class DatasetSplitPanel(QWidget):
         generate_script = self.generate_train_script_checkbox.isChecked()
         train_params = ""
 
-        # 如果需要生成脚本，收集参数
+        # 问题4修复：直接收集 key=value 参数
         if generate_script:
             # 收集所有参数
             params_list = []
@@ -884,19 +929,8 @@ class DatasetSplitPanel(QWidget):
 
                 # 只有当键和值都不为空时才添加
                 if key and value:
-                    # 尝试转换数值类型
-                    try:
-                        # 尝试转换为整数
-                        if '.' not in value:
-                            value = int(value)
-                        else:
-                            # 尝试转换为浮点数
-                            value = float(value)
-                    except ValueError:
-                        # 保持为字符串
-                        pass
-
-                    params_list.append(f"--{key} {value}")
+                    # 使用 key=value 格式
+                    params_list.append(f"{key}={value}")
 
             train_params = " ".join(params_list)
 

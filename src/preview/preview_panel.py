@@ -49,7 +49,7 @@ class PreviewPanel(QWidget):
         # 支持的视频格式
         self.supported_video_formats = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv']
         # 支持的文本格式
-        self.supported_text_formats = ['.txt', '.json', '.xml']
+        self.supported_text_formats = ['.txt', '.json', '.xml', '.py', '.yaml', '.yml']
 
         # 设置焦点策略，确保能接收键盘事件
         self.setFocusPolicy(Qt.StrongFocus)

@@ -1,7 +1,8 @@
 import os
 from typing import List
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, \
-    QTreeWidgetItem, QHeaderView, QFileDialog, QMessageBox, QProgressBar, QLabel, QInputDialog
+    QTreeWidgetItem, QHeaderView, QFileDialog, QMessageBox, QProgressBar, QLabel, QInputDialog, \
+    QAbstractItemView, QTreeView
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from .server_config import ServerConfig
 from .ssh_client import SSHClient
@@ -171,6 +172,8 @@ class RemoteBrowserDialog(QDialog):
             
         # 连接双击信号
         self.file_tree.itemDoubleClicked.connect(self.on_item_double_clicked)
+        # 连接单击信号以启用选择按钮
+        self.file_tree.itemClicked.connect(self.on_item_clicked)
         layout.addWidget(self.file_tree)
         
         # 按钮
@@ -278,6 +281,13 @@ class RemoteBrowserDialog(QDialog):
                 self.current_path = f"{self.current_path}/{filename}"
             self.refresh_directory()
             
+    def on_item_clicked(self, item, column):
+        """
+        处理项单击事件，用于启用选择按钮
+        """
+        # 启用选择按钮，因为用户已选择了一个项目
+        self.select_btn.setEnabled(True)
+            
     def go_up(self):
         """
         返回上级目录
@@ -295,6 +305,21 @@ class RemoteBrowserDialog(QDialog):
         """
         获取选择的路径
         """
+        # 检查是否有选中的项目
+        selected_items = self.file_tree.selectedItems()
+        if selected_items:
+            item = selected_items[0]
+            filename = item.text(0)
+            is_directory = item.data(0, Qt.ItemDataRole.UserRole)
+            
+            # 如果选中的是目录，则返回该目录的完整路径
+            if is_directory and filename != "..":
+                if self.current_path == "/":
+                    return f"/{filename}"
+                else:
+                    return f"{self.current_path}/{filename}"
+        
+        # 默认返回当前目录路径
         return self.current_path
 
 
@@ -306,7 +331,7 @@ class FileTransferDialog(QDialog):
     def __init__(self, server_config: ServerConfig, transfer_type: str, parent=None):
         super().__init__(parent)
         self.server_config = server_config
-        self.transfer_type = transfer_type  # "upload" 或 "download"
+        self.transfer_type = transfer_type  # "upload" 或 "下载"
         self.worker = None
         self.transfer_items = []  # 传输项目列表
         
@@ -314,6 +339,19 @@ class FileTransferDialog(QDialog):
         self.setModal(True)
         self.resize(600, 400)
         self.init_ui()
+        
+    def set_server_config(self, server_config: ServerConfig):
+        """
+        设置服务器配置
+        
+        Args:
+            server_config (ServerConfig): 服务器配置
+        """
+        self.server_config = server_config
+        # 更新界面显示的服务器信息
+        if hasattr(self, 'server_label'):
+            server_info = f"服务器: {self.server_config.name} ({self.server_config.host}:{self.server_config.port})"
+            self.server_label.setText(server_info)
         
     def init_ui(self):
         """
@@ -329,15 +367,27 @@ class FileTransferDialog(QDialog):
         
         # 服务器信息
         server_info = f"服务器: {self.server_config.name} ({self.server_config.host}:{self.server_config.port})"
-        server_label = QLabel(server_info)
-        server_label.setStyleSheet("color: #666; margin-bottom: 10px;")
-        layout.addWidget(server_label)
+        self.server_label = QLabel(server_info)
+        self.server_label.setStyleSheet("color: #666; margin-bottom: 10px;")
+        
+        # 服务器选择按钮
+        self.select_server_btn = QPushButton("选择服务器...")
+        self.select_server_btn.clicked.connect(self.select_server)
+        
+        # 服务器信息布局
+        server_layout = QHBoxLayout()
+        server_layout.addWidget(self.server_label)
+        server_layout.addStretch()
+        server_layout.addWidget(self.select_server_btn)
+        layout.addLayout(server_layout)
         
         # 文件列表
         self.file_tree = QTreeWidget()
         self.file_tree.setHeaderLabels(["文件名", "大小", "进度"])
         self.file_tree.setRootIsDecorated(False)
         self.file_tree.setAlternatingRowColors(True)
+        # 启用多选模式，支持批量移除
+        self.file_tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         
         header = self.file_tree.header()
         if header:
@@ -351,13 +401,34 @@ class FileTransferDialog(QDialog):
         path_layout = QHBoxLayout()
         
         if self.transfer_type == "upload":
-            self.select_files_btn = QPushButton("选择文件/目录...")
+            self.select_files_btn = QPushButton("选择文件...")
             self.select_files_btn.clicked.connect(self.select_files)
+            self.select_folders_btn = QPushButton("选择文件夹...")
+            self.select_folders_btn.clicked.connect(self.select_folders)
+            self.remove_btn = QPushButton("移除选中")
+            self.remove_btn.clicked.connect(self.remove_selected_items)
+            self.remove_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #f44336;
+                    color: white;
+                    border: none;
+                    padding: 5px 10px;
+                    border-radius: 3px;
+                }
+                QPushButton:hover {
+                    background-color: #d32f2f;
+                }
+                QPushButton:disabled {
+                    background-color: #cccccc;
+                }
+            """)
             self.remote_path_label = QLabel("远程路径:")
             self.remote_path_edit = QLabel("/")  # 默认根路径
             self.browse_remote_btn = QPushButton("浏览远程目录...")
             self.browse_remote_btn.clicked.connect(self.browse_remote_directory)
             path_layout.addWidget(self.select_files_btn)
+            path_layout.addWidget(self.select_folders_btn)
+            path_layout.addWidget(self.remove_btn)
             path_layout.addWidget(self.remote_path_label)
             path_layout.addWidget(self.remote_path_edit)
             path_layout.addWidget(self.browse_remote_btn)
@@ -408,19 +479,41 @@ class FileTransferDialog(QDialog):
         
     def select_files(self):
         """
-        选择要上传的文件或目录
+        选择要上传的文件或目录，支持同时选择文件和文件夹
         """
-        # 打开文件选择对话框，允许选择文件和目录
+        # 创建自定义对话框，支持选择文件和文件夹
         dialog = QFileDialog(self)
         dialog.setFileMode(QFileDialog.FileMode.ExistingFiles)
         dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
         
-        # 添加选择目录的选项
-        dialog.setOption(QFileDialog.Option.ShowDirsOnly, False)
+        # 启用文件和文件夹同时选择
+        file_view = dialog.findChild(QTreeView)
+        if file_view:
+            file_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        
+        list_view = dialog.findChild(QAbstractItemView, "listView")
+        if list_view:
+            list_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         
         if dialog.exec() == QFileDialog.DialogCode.Accepted:
             selected_paths = dialog.selectedFiles()
+            
+            # 额外检查是否有选中的目录（通过目录选择对话框）
+            directory = dialog.directory().absolutePath()
+            if directory and os.path.isdir(directory):
+                # 如果用户双击了文件夹，可能需要额外处理
+                # 但由于ExistingFiles模式，双击会进入文件夹
+                pass
+            
             self.add_transfer_items(selected_paths)
+    
+    def select_folders(self):
+        """
+        专门选择文件夹的方法
+        """
+        folder_path = QFileDialog.getExistingDirectory(self, "选择文件夹")
+        if folder_path and os.path.exists(folder_path):
+            self.add_transfer_items([folder_path])
     
     def add_transfer_items(self, paths):
         """
@@ -432,28 +525,86 @@ class FileTransferDialog(QDialog):
     
     def update_file_list(self):
         """
-        更新文件列表显示
+        更新文件列表显示，如果是文件夹则计算大小
         """
         self.file_tree.clear()
         
         for path in self.transfer_items:
             item = QTreeWidgetItem(self.file_tree)
             item.setText(0, os.path.basename(path))
+            # 将完整路径存储在item的data中，用于移除时识别
+            item.setData(0, Qt.ItemDataRole.UserRole, path)
             
-            # 获取文件大小
+            # 获取文件或文件夹大小
             try:
                 if os.path.isfile(path):
                     size = os.path.getsize(path)
                     item.setText(1, self.format_file_size(size))
                 elif os.path.isdir(path):
-                    item.setText(1, "<目录>")
+                    # 计算文件夹大小
+                    folder_size = self._calculate_folder_size(path)
+                    item.setText(1, self.format_file_size(folder_size))
                 else:
                     item.setText(1, "未知")
-            except Exception:
+            except Exception as e:
+                logger.debug(f"获取文件大小失败: {path}, 错误: {e}")
                 item.setText(1, "未知")
             
             # 进度列
             item.setText(2, "等待")
+    
+    def remove_selected_items(self):
+        """
+        移除选中的传输项
+        """
+        selected_items = self.file_tree.selectedItems()
+        if not selected_items:
+            QMessageBox.information(self, "提示", "请先选择要移除的项目")
+            return
+        
+        # 获取选中项的路径
+        paths_to_remove = []
+        for item in selected_items:
+            path = item.data(0, Qt.ItemDataRole.UserRole)
+            if path:
+                paths_to_remove.append(path)
+        
+        # 从传输列表中移除
+        for path in paths_to_remove:
+            if path in self.transfer_items:
+                self.transfer_items.remove(path)
+        
+        # 更新显示
+        self.update_file_list()
+        self.start_btn.setEnabled(len(self.transfer_items) > 0)
+        
+        logger.info(f"已移除 {len(paths_to_remove)} 个项目")
+    
+    def _calculate_folder_size(self, folder_path):
+        """
+        计算文件夹大小（字节）
+        
+        Args:
+            folder_path (str): 文件夹路径
+            
+        Returns:
+            int: 文件夹大小（字节）
+        """
+        try:
+            total_size = 0
+            for dirpath, dirnames, filenames in os.walk(folder_path):
+                for filename in filenames:
+                    file_path = os.path.join(dirpath, filename)
+                    try:
+                        if os.path.exists(file_path):
+                            total_size += os.path.getsize(file_path)
+                    except (OSError, PermissionError) as e:
+                        logger.debug(f"无法访问文件: {file_path}, 错误: {e}")
+                        continue
+            return total_size
+        except Exception as e:
+            logger.error(f"计算文件夹大小时发生异常: {str(e)}")
+            return 0
             
     def format_file_size(self, size_bytes):
         """
@@ -481,6 +632,46 @@ class FileTransferDialog(QDialog):
                 self.remote_path_edit.setText(selected_path)
         except Exception as e:
             QMessageBox.critical(self, "错误", f"浏览远程目录时发生错误：{str(e)}")
+    
+    def select_server(self):
+        """
+        选择服务器
+        """
+        try:
+            # 导入服务器配置管理器
+            from .server_config import ServerConfigManager
+            
+            # 获取所有服务器配置
+            server_manager = ServerConfigManager()
+            server_configs = server_manager.get_server_configs()
+            
+            # 检查是否有配置的服务器
+            if not server_configs:
+                QMessageBox.warning(self, "警告", "请先配置远程服务器!")
+                return
+            
+            # 如果只有一个服务器配置，直接使用
+            if len(server_configs) == 1:
+                self.set_server_config(server_configs[0])
+            else:
+                # 如果有多个服务器配置，让用户选择
+                server_names = [sc.name for sc in server_configs]
+                selected_name, ok = QInputDialog.getItem(
+                    self, "选择服务器", "请选择要上传到的服务器:", server_names, 0, False
+                )
+                
+                if ok and selected_name:
+                    # 查找选中的服务器配置
+                    selected_server = None
+                    for sc in server_configs:
+                        if sc.name == selected_name:
+                            selected_server = sc
+                            break
+                    
+                    if selected_server:
+                        self.set_server_config(selected_server)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"选择服务器时发生异常: {str(e)}")
     
     def select_local_directory(self):
         """

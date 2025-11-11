@@ -259,7 +259,7 @@ class AnnotationWorker(QThread):
 
             self.log_message.emit(f"找到 {self.task.total_files} 个图片文件")
 
-            # 创建labels目录
+            # 创廿labels目录
             labels_dir = os.path.join(self.task.dataset_path, "labels")
             if not os.path.exists(labels_dir):
                 os.makedirs(labels_dir)
@@ -290,11 +290,14 @@ class AnnotationWorker(QThread):
 
     def get_image_files(self, dataset_path):
         """
-        获取数据集中的所有图片文件
+        获取数据集中的所有图片文件（问题4修复：过滤delete文件夹）
         """
         image_files = []
         for root, dirs, files in os.walk(dataset_path):
-            # 跳过labels目录
+            # 问题4修复：过滤delete文件夹
+            if "delete" in dirs:
+                dirs.remove("delete")
+            # 过滤labels目录
             if "labels" in dirs:
                 dirs.remove("labels")
 

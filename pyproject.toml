@@ -10,6 +10,8 @@ dependencies = [
     "PyQt5>=5.15.0,<5.15.12",
     "PyQt5-Qt5>=5.15.2,<5.15.10",  # 限制到更早的版本以确保兼容性
     "ultralytics>=8.3.0",
+    "jinja2>=3.1.0",
+    "pyyaml>=6.0",
 ]
 
 [build-system]
