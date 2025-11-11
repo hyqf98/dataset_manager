@@ -100,16 +100,8 @@ class AlgorithmTestPanel(QDialog):
         self.model_combo.setEditable(True)
         self.model_combo.setFixedWidth(150)  # 减小宽度
 
-        # 添加一些常用的YOLO模型到下拉列表
-        self.model_combo.addItems([
-            "yolov8n.pt",
-            "yolov8s.pt",
-            "yolov8m.pt",
-            "yolov8l.pt",
-            "yolov8x.pt",
-            "yolov8s-world.pt",
-            "yolov8s-worldv2.pt"
-        ])
+        # 从models.txt文件读取模型列表
+        self.load_models_from_file()
 
         # 初始化模型路径
         self.init_model_paths()
@@ -271,6 +263,44 @@ class AlgorithmTestPanel(QDialog):
             # 不再将目录中的模型文件添加到下拉列表，仅用作缓存目录
         except Exception as e:
             logger.error(f"初始化模型路径失败: {str(e)}")
+
+    def load_models_from_file(self):
+        """
+        从models.txt文件加载模型列表
+        """
+        try:
+            # 获取项目根目录
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            models_file = os.path.join(project_root, "models.txt")
+            
+            # 如果文件存在，读取模型列表
+            if os.path.exists(models_file):
+                with open(models_file, 'r', encoding='utf-8') as f:
+                    models = [line.strip() for line in f.readlines() if line.strip()]
+                    self.model_combo.addItems(models)
+            else:
+                # 如果文件不存在，使用默认模型列表
+                self.model_combo.addItems([
+                    "yolov8n.pt",
+                    "yolov8s.pt",
+                    "yolov8m.pt",
+                    "yolov8l.pt",
+                    "yolov8x.pt",
+                    "yolov8s-world.pt",
+                    "yolov8s-worldv2.pt"
+                ])
+        except Exception as e:
+            logger.error(f"加载模型列表失败: {str(e)}")
+            # 出现错误时使用默认模型列表
+            self.model_combo.addItems([
+                "yolov8n.pt",
+                "yolov8s.pt",
+                "yolov8m.pt",
+                "yolov8l.pt",
+                "yolov8x.pt",
+                "yolov8s-world.pt",
+                "yolov8s-worldv2.pt"
+            ])
 
     def get_model_path(self, model_name):
         """

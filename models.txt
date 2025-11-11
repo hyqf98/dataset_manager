@@ -1,0 +1,9 @@
+yolov8n.pt
+yolov8s.pt
+yolov8m.pt
+yolov8l.pt
+yolov8x.pt
+yolov8s-world.pt
+yolov8s-worldv2.pt
+yolov8m-world.pt
+yolov8m-worldv2.pt

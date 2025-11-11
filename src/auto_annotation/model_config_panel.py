@@ -224,19 +224,8 @@ class ModelConfigForm(QDialog):
         # YOLO模型选择布局（包含自定义模型选择按钮）
         yolo_model_layout = QHBoxLayout()
         self.yolo_model_name_combo = QComboBox()
-        # 添加预定义的模型到下拉列表
-        self.yolo_model_name_combo.addItems([
-            "yolov8n.pt", 
-            "yolov8s.pt", 
-            "yolov8m.pt", 
-            "yolov8l.pt", 
-            "yolov8x.pt",
-            "yolov8s-world.pt",
-            "yolov8s-worldv2.pt",
-            "yolov8m-world.pt",
-            "yolov8m-worldv2.pt",
-            "自定义"
-        ])
+        # 从models.txt文件读取模型列表
+        self.load_models_from_file()
         self.yolo_model_name_combo.setEditable(True)
         yolo_model_layout.addWidget(self.yolo_model_name_combo)
         
@@ -309,42 +298,6 @@ class ModelConfigForm(QDialog):
         # 初始状态更新
         self.on_type_changed(self.type_combo.currentIndex())
 
-    def select_yolo_model_file(self):
-        """
-        选择YOLO模型文件
-        """
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, 
-            "选择YOLO模型文件", 
-            "", 
-            "模型文件 (*.pt *.pth *.h5 *.onnx);;所有文件 (*)"
-        )
-        if file_path:
-            # 检查是否需要将模型文件复制到持久化路径
-            model_name = os.path.basename(file_path)
-            persist_path = self.get_model_persist_path()
-            
-            # 如果是默认提供的模型，将其保存到持久化路径
-            predefined_models = ["yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8l.pt", "yolov8x.pt", 
-                               "yolov8s-world.pt", "yolov8s-worldv2.pt", "yolov8m-world.pt", 
-                               "yolov8m-worldv2.pt"]
-                               
-            if model_name in predefined_models:
-                target_path = os.path.join(persist_path, model_name)
-                if not os.path.exists(target_path):
-                    try:
-                        import shutil
-                        os.makedirs(persist_path, exist_ok=True)
-                        shutil.copy2(file_path, target_path)
-                        file_path = target_path
-                        logger.info(f"已将模型文件复制到持久化路径: {target_path}")
-                    except Exception as e:
-                        logger.error(f"复制模型文件时出错: {e}")
-                        QMessageBox.warning(self, "警告", f"无法将模型文件复制到持久化路径: {e}")
-            
-            # 将选中的文件路径填入模型名称输入框
-            self.yolo_model_name_combo.setEditText(file_path)
-
     def get_model_persist_path(self):
         """
         获取模型文件持久化存储路径
@@ -356,6 +309,52 @@ class ModelConfigForm(QDialog):
         os.makedirs(dataset_manager_dir, exist_ok=True)
         persist_path = os.path.join(dataset_manager_dir, "models")
         return persist_path
+
+    def load_models_from_file(self):
+        """
+        从models.txt文件加载模型列表
+        """
+        try:
+            # 获取项目根目录
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            models_file = os.path.join(project_root, "models.txt")
+            
+            # 如果文件存在，读取模型列表
+            if os.path.exists(models_file):
+                with open(models_file, 'r', encoding='utf-8') as f:
+                    models = [line.strip() for line in f.readlines() if line.strip()]
+                    self.yolo_model_name_combo.addItems(models)
+            else:
+                # 如果文件不存在，使用默认模型列表
+                self.yolo_model_name_combo.addItems([
+                    "yolov8n.pt", 
+                    "yolov8s.pt", 
+                    "yolov8m.pt", 
+                    "yolov8l.pt", 
+                    "yolov8x.pt",
+                    "yolov8s-world.pt",
+                    "yolov8s-worldv2.pt",
+                    "yolov8m-world.pt",
+                    "yolov8m-worldv2.pt"
+                ])
+            
+            # 添加"自定义"选项
+            self.yolo_model_name_combo.addItem("自定义")
+        except Exception as e:
+            logger.error(f"加载模型列表失败: {str(e)}")
+            # 出现错误时使用默认模型列表
+            self.yolo_model_name_combo.addItems([
+                "yolov8n.pt", 
+                "yolov8s.pt", 
+                "yolov8m.pt", 
+                "yolov8l.pt", 
+                "yolov8x.pt",
+                "yolov8s-world.pt",
+                "yolov8s-worldv2.pt",
+                "yolov8m-world.pt",
+                "yolov8m-worldv2.pt",
+                "自定义"
+            ])
 
     def on_yolo_model_changed(self, index):
         """

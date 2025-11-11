@@ -85,9 +85,10 @@ class RectangleAnnotation(Annotation):
             font = QFont()
             font.setPointSize(10)  # 将字体大小从14改为10
             painter.setFont(font)
-            # 将标签显示在矩形框的左上方，进一步减小距离
-            text_x = scaled_rect.left()
-            text_y = scaled_rect.top() - 6  # 在矩形框上方6像素处显示
+            # 始终将标签显示在视觉上的左上角，使用矩形的最小x和最小y坐标
+            # 这样无论如何调整矩形框，标签都会保持在左上方
+            text_x = min(scaled_rect.left(), scaled_rect.right())
+            text_y = min(scaled_rect.top(), scaled_rect.bottom()) - 6  # 在矩形框上方6像素处显示
             painter.drawText(text_x, text_y, self.label)
 
         # 如果被选中，绘制控制点
@@ -1060,7 +1061,10 @@ class ImageLabel(QLabel):
                     # 开始绘制矩形
                     self.drawing = True
                     self.current_rectangle = QRect(clicked_point, clicked_point)
+                    self.drawing_start_point = clicked_point  # 保存起始点
                     self.update()
+                    return
+
                     return
                 elif self.mode == 'polygon':
                     # 对于多边形模式，需要检查是否点击了起始点以实现闭环
@@ -1215,8 +1219,17 @@ class ImageLabel(QLabel):
 
         # 矩形框绘制和操作处理
         if self.drawing and self.current_rectangle:
-            # 更新当前矩形框的结束点
-            self.current_rectangle.setBottomRight(adjusted_pos)
+            # 根据鼠标当前位置和起始位置创建正确的矩形
+            if hasattr(self, 'drawing_start_point'):
+                # 创建一个标准化的矩形（确保宽度和高度为正数）
+                left = min(self.drawing_start_point.x(), adjusted_pos.x())
+                top = min(self.drawing_start_point.y(), adjusted_pos.y())
+                right = max(self.drawing_start_point.x(), adjusted_pos.x())
+                bottom = max(self.drawing_start_point.y(), adjusted_pos.y())
+                self.current_rectangle = QRect(QPoint(left, top), QPoint(right, bottom))
+            else:
+                # 兼容旧版本，保持原有逻辑
+                self.current_rectangle.setBottomRight(adjusted_pos)
             self.update()
         elif self.dragging and self.selected_annotation and isinstance(self.selected_annotation, RectangleAnnotation):
             # 计算鼠标移动的距离
@@ -1302,8 +1315,17 @@ class ImageLabel(QLabel):
 
         # 矩形框处理
         if self.drawing and self.current_rectangle:
-            # 设置当前矩形框的最终结束点
-            self.current_rectangle.setBottomRight(adjusted_pos)
+            # 根据鼠标当前位置和起始位置创建正确的矩形
+            if hasattr(self, 'drawing_start_point'):
+                # 创建一个标准化的矩形（确保宽度和高度为正数）
+                left = min(self.drawing_start_point.x(), adjusted_pos.x())
+                top = min(self.drawing_start_point.y(), adjusted_pos.y())
+                right = max(self.drawing_start_point.x(), adjusted_pos.x())
+                bottom = max(self.drawing_start_point.y(), adjusted_pos.y())
+                self.current_rectangle = QRect(QPoint(left, top), QPoint(right, bottom))
+            else:
+                # 兼容旧版本，保持原有逻辑
+                self.current_rectangle.setBottomRight(adjusted_pos)
 
             # 只有当矩形框有足够的大小时才添加并弹出输入框
             if self.current_rectangle.width() > 5 and self.current_rectangle.height() > 5:

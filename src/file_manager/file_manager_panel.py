@@ -301,6 +301,7 @@ class FileManagerUI(QWidget):
             self.proxy_model = None  # 代理模型
             self.root_path_label = None  # 显示当前根路径的标签
             self.context_menu = None  # 右键菜单
+            self.search_box = None  # 搜索框
             self.init_ui()
             self.loaded_files = {}  # 存储已加载的文件信息
             self.batch_size = 100   # 每次加载的文件数量
@@ -384,6 +385,10 @@ class FileManagerUI(QWidget):
             self.tree_view.setSortingEnabled(False)  # 默认不启用排序
             self.tree_view.setHeaderHidden(False)
             self.tree_view.setAlternatingRowColors(True)
+            
+            # 确保滚动条始终可见
+            self.tree_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.tree_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
             # 启用拖拽功能
             self.tree_view.setDragEnabled(True)
@@ -1337,6 +1342,10 @@ class FileManagerPanel(QWidget):
             self.ui.recycle_bin_btn.clicked.connect(self.open_recycle_bin)
             self.ui.refresh_btn.clicked.connect(self.refresh_view)
 
+            # 连接搜索框事件
+            if self.ui.search_box:
+                self.ui.search_box.textChanged.connect(self.on_search_text_changed)
+
             # 连接树形视图的点击事件，用于处理文件和文件夹点击
             if self.ui and self.ui.tree_view:
                 self.ui.tree_view.clicked.connect(self.on_item_clicked)
@@ -1363,6 +1372,105 @@ class FileManagerPanel(QWidget):
             logger.error(f"FileManagerPanel初始化UI时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             raise
+            
+    def on_search_text_changed(self, text):
+        """
+        处理搜索框文本变化事件
+        
+        Args:
+            text (str): 搜索框中的文本
+        """
+        try:
+            # 如果搜索文本为空，则不做特殊处理，保持原有显示
+            if not text:
+                return
+                
+            # 在文件树中查找匹配的文件
+            self.find_and_select_file(text)
+        except Exception as e:
+            logger.error(f"处理搜索文本变化时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            
+    def find_and_select_file(self, search_text):
+        """
+        在文件树中查找并选中匹配的文件
+        
+        Args:
+            search_text (str): 要搜索的文本
+        """
+        try:
+            if not self.ui or not self.ui.tree_view or not self.ui.model or not self.ui.proxy_model:
+                return
+                
+            # 获取根索引
+            root_index = self.ui.tree_view.rootIndex()
+            
+            # 递归查找匹配的文件
+            matched_index = self._find_file_recursive(root_index, search_text.lower())
+            
+            if matched_index and matched_index.isValid():
+                # 选中找到的文件
+                self.ui.tree_view.setCurrentIndex(matched_index)
+                # 展开到该文件的路径
+                self.ui.tree_view.expand(matched_index.parent())
+                # 滚动到该文件可见
+                self.ui.tree_view.scrollTo(matched_index)
+                logger.debug(f"找到并选中文件: {search_text}")
+        except Exception as e:
+            logger.error(f"查找并选中文件时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            
+    def _find_file_recursive(self, parent_index, search_text):
+        """
+        递归查找匹配的文件
+        
+        Args:
+            parent_index (QModelIndex): 父索引
+            search_text (str): 要搜索的文本
+            
+        Returns:
+            QModelIndex: 匹配的索引，如果未找到则返回无效索引
+        """
+        try:
+            if not self.ui or not self.ui.proxy_model or not self.ui.model:
+                return None
+                
+            # 获取子项数量
+            row_count = self.ui.proxy_model.rowCount(parent_index)
+            
+            # 遍历所有子项
+            for row in range(row_count):
+                # 获取子项索引
+                index = self.ui.proxy_model.index(row, 0, parent_index)
+                if not index.isValid():
+                    continue
+                    
+                # 将代理索引映射到源索引
+                source_index = self.ui.proxy_model.mapToSource(index)
+                if not source_index.isValid():
+                    continue
+                    
+                # 获取文件名
+                file_name = self.ui.model.fileName(source_index)
+                
+                # 检查文件名是否匹配搜索文本
+                if search_text in file_name.lower():
+                    # 检查是否是文件（而不是文件夹）
+                    file_path = self.ui.model.filePath(source_index)
+                    if os.path.isfile(file_path):
+                        return index
+                        
+                # 递归搜索子文件夹
+                if self.ui.model.isDir(source_index):
+                    result = self._find_file_recursive(index, search_text)
+                    if result and result.isValid():
+                        return result
+                        
+            return None
+        except Exception as e:
+            logger.error(f"递归查找文件时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            return None
 
     def import_folders(self):
         """
