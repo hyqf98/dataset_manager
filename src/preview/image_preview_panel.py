@@ -67,6 +67,22 @@ class RectangleAnnotation(Annotation):
             int(self.rectangle.height() * scale_factor)
         )
 
+        # 如果被选中或高亮，先绘制半透明的浅绿色蒙版
+        if self.selected or self.highlighted:
+            # 保存当前画笔和画刷
+            saved_pen = painter.pen()
+            saved_brush = painter.brush()
+            
+            # 设置半透明的浅绿色填充 (RGBA: 0, 255, 0, 60 表示浅绿色，透明度约23%)
+            from PyQt5.QtGui import QColor
+            painter.setPen(Qt.NoPen)  # 不绘制边框，只填充
+            painter.setBrush(QColor(0, 255, 0, 60))  # 浅绿色，透明度60/255≈23%
+            painter.drawRect(scaled_rect)
+            
+            # 恢复画笔和画刷
+            painter.setPen(saved_pen)
+            painter.setBrush(saved_brush)
+
         # 根据状态设置画笔
         if self.selected:
             painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))  # 将线宽从3改为1
@@ -76,7 +92,7 @@ class RectangleAnnotation(Annotation):
         else:
             painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))  # 将线宽从2改为1
 
-        # 绘制矩形
+        # 绘制矩形边框
         painter.setBrush(Qt.NoBrush)
         painter.drawRect(scaled_rect)
 
@@ -149,6 +165,33 @@ class PolygonAnnotation(Annotation):
         if len(self.points) < 1:
             return
 
+        # 绘制点之间的连接线（缩放后）
+        scaled_points = []
+        for point in self.points:
+            scaled_points.append(QPoint(
+                int(point.x() * scale_factor),
+                int(point.y() * scale_factor)
+            ))
+
+        # 如果被选中或高亮，先绘制半透明的浅绿色蒙版
+        if (self.selected or self.highlighted) and self.closed and len(scaled_points) >= 3:
+            # 保存当前画笔和画刷
+            saved_pen = painter.pen()
+            saved_brush = painter.brush()
+            
+            # 创建多边形对象用于填充
+            from PyQt5.QtGui import QPolygon, QColor
+            polygon = QPolygon(scaled_points)
+            
+            # 设置半透明的浅绿色填充 (RGBA: 0, 255, 0, 60 表示浅绿色，透明度约23%)
+            painter.setPen(Qt.NoPen)  # 不绘制边框，只填充
+            painter.setBrush(QColor(0, 255, 0, 60))  # 浅绿色，透明度60/255≈23%
+            painter.drawPolygon(polygon)
+            
+            # 恢复画笔和画刷
+            painter.setPen(saved_pen)
+            painter.setBrush(saved_brush)
+
         # 根据状态设置画笔
         if self.selected:
             painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))  # 将线宽从3改为1
@@ -158,14 +201,7 @@ class PolygonAnnotation(Annotation):
         else:
             painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))  # 将线宽从2改为1
 
-        # 绘制点之间的连接线（缩放后）
-        scaled_points = []
-        for point in self.points:
-            scaled_points.append(QPoint(
-                int(point.x() * scale_factor),
-                int(point.y() * scale_factor)
-            ))
-
+        # 绘制多边形边框
         if not self.closed:
             for i in range(len(scaled_points) - 1):
                 painter.drawLine(scaled_points[i], scaled_points[i + 1])
