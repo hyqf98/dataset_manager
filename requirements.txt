@@ -6,6 +6,8 @@ opencv-python>=4.12.0.88
 ultralytics>=8.3.0
 openai>=1.50.0
 paramiko>=4.0.0
+matplotlib>=3.5.0
+jinja2>=3.1.0
 
 # 不同操作系统的安装说明：
 #

@@ -7,3 +7,7 @@ yolov8s-world.pt
 yolov8s-worldv2.pt
 yolov8m-world.pt
 yolov8m-worldv2.pt
+yolo11n.pt
+yolo11s.pt
+yolo11l.pt
+yolo11x.pt

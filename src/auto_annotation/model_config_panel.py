@@ -190,23 +190,13 @@ class ModelConfigForm(QDialog):
         """
         初始化界面
         """
-        # 创建一个主容器widget来更好地控制布局
-        main_widget = QWidget()
-        layout = QFormLayout(main_widget)
-        # 优化表单布局，减少控件间距
+        layout = QFormLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(10)
-        layout.setLabelAlignment(Qt.AlignRight)  # 修改为右对齐
-        # 设置字段增长策略，确保标签正确对齐
-        layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
-        
-        # 设置主布局
-        main_layout = QVBoxLayout(self)
-        main_layout.addWidget(main_widget)
+        layout.setLabelAlignment(Qt.AlignRight)  # type: ignore
+        layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)  # type: ignore
 
-        # 创建对齐的输入框布局
         self.name_edit = QLineEdit()
-        
         self.type_combo = QComboBox()
         for annotation_type in AnnotationType:
             self.type_combo.addItem(annotation_type.value, annotation_type)
@@ -214,39 +204,39 @@ class ModelConfigForm(QDialog):
         # YOLO相关控件
         self.yolo_group = QWidget()
         yolo_layout = QFormLayout(self.yolo_group)
-        # 优化YOLO组布局
         yolo_layout.setContentsMargins(0, 0, 0, 0)
-        yolo_layout.setSpacing(8)
-        yolo_layout.setLabelAlignment(Qt.AlignRight)  # 修改为右对齐
-        # 设置字段增长策略，确保标签正确对齐
-        yolo_layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
+        yolo_layout.setSpacing(10)
+        yolo_layout.setLabelAlignment(Qt.AlignRight)  # type: ignore
+        yolo_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)  # type: ignore
         
-        # YOLO模型选择布局（包含自定义模型选择按钮）
+        # YOLO模型选择布局（包含浏览按钮）
         yolo_model_layout = QHBoxLayout()
         self.yolo_model_name_combo = QComboBox()
         # 从models.txt文件读取模型列表
         self.load_models_from_file()
         self.yolo_model_name_combo.setEditable(True)
+        self.yolo_model_button = QPushButton("浏览...")
+        self.yolo_model_button.clicked.connect(self.select_yolo_model_file)
         yolo_model_layout.addWidget(self.yolo_model_name_combo)
+        yolo_model_layout.addWidget(self.yolo_model_button)
         
         self.yolo_classes_edit = QTextEdit()
         self.yolo_classes_edit.setMaximumHeight(100)
+        self.yolo_classes_edit.setPlaceholderText("每行输入一个分类，例如：\nperson\ncar\ndog")
         yolo_layout.addRow("YOLO模型名称:", yolo_model_layout)
         yolo_layout.addRow("YOLO分类:", self.yolo_classes_edit)
 
         # OpenAI相关控件
         self.openai_group = QWidget()
         openai_layout = QFormLayout(self.openai_group)
-        # 优化OpenAI组布局
         openai_layout.setContentsMargins(0, 0, 0, 0)
-        openai_layout.setSpacing(8)
-        openai_layout.setLabelAlignment(Qt.AlignRight)  # 修改为右对齐
-        # 设置字段增长策略，确保标签正确对齐
-        openai_layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
+        openai_layout.setSpacing(10)
+        openai_layout.setLabelAlignment(Qt.AlignRight)  # type: ignore
+        openai_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)  # type: ignore
         
         self.openai_api_url_edit = QLineEdit()
         self.openai_api_key_edit = QLineEdit()
-        self.openai_api_key_edit.setEchoMode(QLineEdit.Password)
+        self.openai_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.openai_model_name_edit = QLineEdit()
         self.openai_prompt_edit = QTextEdit()
         self.openai_prompt_edit.setMaximumHeight(100)
@@ -281,7 +271,6 @@ class ModelConfigForm(QDialog):
 
         # 连接信号
         self.type_combo.currentIndexChanged.connect(self.on_type_changed)
-        self.yolo_model_name_combo.currentIndexChanged.connect(self.on_yolo_model_changed)
 
         # 添加控件到布局
         layout.addRow("模型名称:", self.name_edit)
@@ -290,7 +279,8 @@ class ModelConfigForm(QDialog):
         layout.addRow(self.openai_group)
 
         # 添加按钮
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox()
+        buttons.setStandardButtons(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)  # type: ignore
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
@@ -338,8 +328,6 @@ class ModelConfigForm(QDialog):
                     "yolov8m-worldv2.pt"
                 ])
             
-            # 添加"自定义"选项
-            self.yolo_model_name_combo.addItem("自定义")
         except Exception as e:
             logger.error(f"加载模型列表失败: {str(e)}")
             # 出现错误时使用默认模型列表
@@ -352,19 +340,21 @@ class ModelConfigForm(QDialog):
                 "yolov8s-world.pt",
                 "yolov8s-worldv2.pt",
                 "yolov8m-world.pt",
-                "yolov8m-worldv2.pt",
-                "自定义"
+                "yolov8m-worldv2.pt"
             ])
 
-    def on_yolo_model_changed(self, index):
+    def select_yolo_model_file(self):
         """
-        YOLO模型选择改变时的处理函数
+        选择YOLO模型文件
         """
-        if index >= 0 and self.yolo_model_name_combo.currentText() == "自定义":
-            # 当选择"自定义"时，打开文件选择对话框
-            self.select_yolo_model_file()
-            # 重置下拉框选项，避免重复选择"自定义"
-            self.yolo_model_name_combo.setCurrentIndex(0)
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择YOLO模型文件",
+            "",
+            "模型文件 (*.pt *.pth *.h5 *.onnx);;所有文件 (*)"
+        )
+        if file_path:
+            self.yolo_model_name_combo.setEditText(file_path)
 
     def on_type_changed(self, index):
         """

@@ -72,13 +72,13 @@ class RectangleAnnotation(Annotation):
             # 保存当前画笔和画刷
             saved_pen = painter.pen()
             saved_brush = painter.brush()
-            
+
             # 设置半透明的浅绿色填充 (RGBA: 0, 255, 0, 60 表示浅绿色，透明度约23%)
             from PyQt5.QtGui import QColor
             painter.setPen(Qt.NoPen)  # 不绘制边框，只填充
             painter.setBrush(QColor(0, 255, 0, 60))  # 浅绿色，透明度60/255≈23%
             painter.drawRect(scaled_rect)
-            
+
             # 恢复画笔和画刷
             painter.setPen(saved_pen)
             painter.setBrush(saved_brush)
@@ -178,16 +178,16 @@ class PolygonAnnotation(Annotation):
             # 保存当前画笔和画刷
             saved_pen = painter.pen()
             saved_brush = painter.brush()
-            
+
             # 创建多边形对象用于填充
             from PyQt5.QtGui import QPolygon, QColor
             polygon = QPolygon(scaled_points)
-            
+
             # 设置半透明的浅绿色填充 (RGBA: 0, 255, 0, 60 表示浅绿色，透明度约23%)
             painter.setPen(Qt.NoPen)  # 不绘制边框，只填充
             painter.setBrush(QColor(0, 255, 0, 60))  # 浅绿色，透明度60/255≈23%
             painter.drawPolygon(polygon)
-            
+
             # 恢复画笔和画刷
             painter.setPen(saved_pen)
             painter.setBrush(saved_brush)
@@ -252,12 +252,12 @@ class PolygonAnnotation(Annotation):
                 painter.setPen(QPen(Qt.green, 1, Qt.SolidLine))
             else:
                 painter.setPen(QPen(Qt.red, 1, Qt.SolidLine))
-            
+
             # 绘制标签文本（在多边形中心位置垂直居中）
             font = QFont()
             font.setPointSize(10)
             painter.setFont(font)
-            
+
             # 获取文本的矩形范围，用于居中对齐
             text_rect = painter.fontMetrics().boundingRect(self.label)
             # 计算文本绘制位置，使其在中心点垂直和水平居中
@@ -330,7 +330,7 @@ class ImageLabel(QLabel):
 
         # 操作类型标识符，用于区分不同的操作
         self.operation_type = None  # 'select', 'add', 'edit', 'delete', 'drag', 'resize'
-        
+
         # 鼠标悬停选中相关属性
         self.hover_annotation = None  # 鼠标悬停的标注框
         self.click_selected_annotation = None  # 点击选中的标注框（用于区分悬停和点击）
@@ -583,7 +583,7 @@ class ImageLabel(QLabel):
         image_dir = os.path.dirname(self.file_path)
         image_name = os.path.basename(self.file_path)
         image_name_without_ext = os.path.splitext(image_name)[0]
-        
+
         # 使用os.fsencode/os.fsdecode确保不同系统下的中文文件名兼容性
         try:
             # 尝试解码文件名，确保正确处理中文
@@ -591,7 +591,7 @@ class ImageLabel(QLabel):
         except (UnicodeDecodeError, UnicodeEncodeError):
             # 如果编解码失败，使用原始名称
             pass
-        
+
         logger.info(f"加载标注文件: 图片={image_name}, 不带扩展名={image_name_without_ext}")
 
         # 按优先级查找标注文件
@@ -601,13 +601,11 @@ class ImageLabel(QLabel):
         labels_dir_same_level = os.path.join(image_dir, 'labels')
         if os.path.exists(labels_dir_same_level):
             annotation_path = os.path.join(labels_dir_same_level, image_name_without_ext + '.txt')
-            logger.info(f"检查路径 1: {annotation_path}, 存在={os.path.exists(annotation_path)}")
             if os.path.exists(annotation_path):
                 annotation_paths.append(annotation_path)
 
         # 2. 再找图片同一个路径下面有没有同名标注文件
         same_dir_annotation = os.path.join(image_dir, image_name_without_ext + '.txt')
-        logger.info(f"检查路径 2: {same_dir_annotation}, 存在={os.path.exists(same_dir_annotation)}")
         if os.path.exists(same_dir_annotation):
             annotation_paths.append(same_dir_annotation)
 
@@ -615,7 +613,6 @@ class ImageLabel(QLabel):
         parent_dir = os.path.dirname(image_dir)
         if parent_dir:
             same_level_annotation = os.path.join(parent_dir, image_name_without_ext + '.txt')
-            logger.info(f"检查路径 3: {same_level_annotation}, 存在={os.path.exists(same_level_annotation)}")
             if os.path.exists(same_level_annotation):
                 annotation_paths.append(same_level_annotation)
 
@@ -624,7 +621,6 @@ class ImageLabel(QLabel):
             labels_dir_parent_level = os.path.join(parent_dir, 'labels')
             if os.path.exists(labels_dir_parent_level):
                 annotation_path = os.path.join(labels_dir_parent_level, image_name_without_ext + '.txt')
-                logger.info(f"检查路径 4: {annotation_path}, 存在={os.path.exists(annotation_path)}")
                 if os.path.exists(annotation_path):
                     annotation_paths.append(annotation_path)
 
@@ -633,11 +629,7 @@ class ImageLabel(QLabel):
         for path in annotation_paths:
             if os.path.exists(path):
                 annotation_file = path
-                logger.info(f"找到标注文件: {annotation_file}")
                 break
-        
-        if not annotation_file:
-            logger.info(f"未找到标注文件: {image_name_without_ext}.txt")
 
         # 加载类别名称
         classes_file = None
@@ -1038,7 +1030,7 @@ class ImageLabel(QLabel):
         self.selected_annotation = None
         self.selected_point_info = None
         self.selected_control_point = None
-        
+
         # 查找匹配的注解对象
         matched_annotations = []
 
@@ -1077,7 +1069,7 @@ class ImageLabel(QLabel):
         self.selected_annotation = None
         self.selected_point_info = None
         self.selected_control_point = None
-        
+
         # 查找匹配标签的注解数据
         matched_annotations_data = []
         for annotation in self.annotations:
@@ -1404,7 +1396,7 @@ class ImageLabel(QLabel):
                             self.update()
                         hover_found = True
                         break
-                
+
                 # 如果鼠标不在任何标注框上
                 if not hover_found:
                     # 清除悬停状态
@@ -1414,7 +1406,7 @@ class ImageLabel(QLabel):
                         if not self.click_selected_annotation:
                             self.selected_annotation = None
                         self.update()
-            
+
             # 不满足任何特殊条件时，仍然需要更新鼠标位置
             self.update()
 
@@ -1485,12 +1477,12 @@ class ImageLabel(QLabel):
             self.resize_handle = None
             self.original_polygon_points = []
             self.update()
-            
+
             # 判断是否真正发生了拖动或调整大小（鼠标移动了）
             if hasattr(self, 'drag_start_point'):
-                distance = ((adjusted_pos.x() - self.drag_start_point.x()) ** 2 + 
+                distance = ((adjusted_pos.x() - self.drag_start_point.x()) ** 2 +
                            (adjusted_pos.y() - self.drag_start_point.y()) ** 2) ** 0.5
-                
+
                 # 如果移动距离小于5像素，认为是点击选中操作，而不是拖动
                 if distance < 5:
                     # 这是点击选中操作
@@ -1999,17 +1991,17 @@ class ImageDetailsPanel(QWidget):
     def eventFilter(self, obj, event):
         """
         事件过滤器，用于检测点击表格空白区域
-        
+
         Args:
             obj: 事件源对象
             event: 事件对象
-            
+
         Returns:
             bool: 是否拦截事件
         """
         from PyQt5.QtCore import QEvent
         from PyQt5.QtGui import QMouseEvent
-        
+
         # 检查是否是表格 viewport 的鼠标按下事件
         if event.type() == QEvent.MouseButtonPress and isinstance(event, QMouseEvent):
             # 检查是哪个表格
@@ -2018,19 +2010,19 @@ class ImageDetailsPanel(QWidget):
                 table = self.class_table
             elif obj == self.detail_table.viewport():
                 table = self.detail_table
-            
+
             if table:
                 # 获取点击位置
                 pos = event.pos()
                 # 检查点击位置是否在某个项上
                 item = table.itemAt(pos)
-                
+
                 # 如果点击的是空白区域（没有项）
                 if not item:
                     # 清除所有选中
                     self.clear_selection()
                     return True  # 拦截事件，防止默认处理
-        
+
         # 调用父类的事件过滤器
         return super().eventFilter(obj, event)
 
@@ -2045,14 +2037,14 @@ class ImageDetailsPanel(QWidget):
         """
         # 设置更新标识，防止触发on_detail_selection_changed中的clear_selection
         self.is_updating = True
-        
+
         self.annotations = annotations
         self.refresh_class_table()
         self.refresh_detail_table()
-        
+
         # 重置更新标识
         self.is_updating = False
-        
+
         # 如果操作类型是选中，且有选中的标注数据，则高亮对应的行
         if operation_type == 'select' and selected_annotation:
             self.select_annotation_by_data(selected_annotation)
@@ -2114,7 +2106,7 @@ class ImageDetailsPanel(QWidget):
         # 如果正在更新表格，不处理选中变化事件
         if self.is_updating:
             return
-        
+
         selected_labels = []
         for item in self.class_table.selectedItems():
             label = item.data(Qt.UserRole)
@@ -2126,7 +2118,7 @@ class ImageDetailsPanel(QWidget):
             self.detail_table.blockSignals(True)
             self.detail_table.clearSelection()
             self.detail_table.blockSignals(False)
-            
+
             # 直接调用预览面板的方法，使用标签高亮
             if self.preview_panel:
                 self.preview_panel.image_label.highlight_annotations_by_labels(selected_labels)
@@ -2139,7 +2131,7 @@ class ImageDetailsPanel(QWidget):
         # 如果正在更新表格，不处理选中变化事件
         if self.is_updating:
             return
-        
+
         selected_annotations = []
         for item in self.detail_table.selectedItems():
             annotation = item.data(Qt.UserRole)
@@ -2151,7 +2143,7 @@ class ImageDetailsPanel(QWidget):
             self.class_table.blockSignals(True)
             self.class_table.clearSelection()
             self.class_table.blockSignals(False)
-            
+
             if self.preview_panel:
                 self.preview_panel.image_label.highlight_annotations_by_data(selected_annotations)
         # 不再在这里调用clear_selection，只有点击空白处时才清除
