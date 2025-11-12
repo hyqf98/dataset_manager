@@ -2,11 +2,150 @@ import os
 from typing import List
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, \
     QTreeWidgetItem, QHeaderView, QFileDialog, QMessageBox, QProgressBar, QLabel, QInputDialog, \
-    QAbstractItemView, QTreeView
+    QAbstractItemView, QTreeView, QMenu, QAction
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from .server_config import ServerConfig
 from .ssh_client import SSHClient
 from ..logging_config import logger
+
+
+class FileOverwritePolicy:
+    """文件覆盖策略"""
+    ASK = 'ask'  # 每次询问
+    OVERWRITE = 'overwrite'  # 覆盖当前
+    OVERWRITE_ALL = 'overwrite_all'  # 覆盖全部
+    SKIP = 'skip'  # 跳过当前
+    SKIP_ALL = 'skip_all'  # 跳过全部
+
+
+class FileOverwriteDialog(QDialog):
+    """
+    文件覆盖确认对话框
+    """
+    
+    def __init__(self, filename: str, parent=None):
+        super().__init__(parent)
+        self.filename = filename
+        self.policy = FileOverwritePolicy.ASK
+        
+        self.setWindowTitle("文件已存在")
+        self.setModal(True)
+        self.resize(400, 200)
+        self.init_ui()
+        
+    def init_ui(self):
+        """
+        初始化界面
+        """
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 提示信息
+        message_label = QLabel(f"远程服务器上已存在文件:\n\n{self.filename}\n\n您想要如何处理?")
+        message_label.setWordWrap(True)
+        message_label.setStyleSheet("""
+            QLabel {
+                font-size: 13px;
+                padding: 10px;
+                background-color: #fff3cd;
+                border: 1px solid #ffc107;
+                border-radius: 4px;
+            }
+        """)
+        layout.addWidget(message_label)
+        
+        # 按钮布局
+        button_layout = QVBoxLayout()
+        button_layout.setSpacing(8)
+        
+        # 覆盖按钮
+        self.overwrite_btn = QPushButton("覆盖此文件")
+        self.overwrite_btn.clicked.connect(lambda: self.set_policy(FileOverwritePolicy.OVERWRITE))
+        self.overwrite_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff9800;
+                color: white;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #f57c00;
+            }
+        """)
+        
+        # 覆盖全部按钮
+        self.overwrite_all_btn = QPushButton("覆盖全部")
+        self.overwrite_all_btn.clicked.connect(lambda: self.set_policy(FileOverwritePolicy.OVERWRITE_ALL))
+        self.overwrite_all_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+        """)
+        
+        # 跳过按钮
+        self.skip_btn = QPushButton("跳过此文件")
+        self.skip_btn.clicked.connect(lambda: self.set_policy(FileOverwritePolicy.SKIP))
+        self.skip_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        
+        # 跳过全部按钮
+        self.skip_all_btn = QPushButton("跳过全部")
+        self.skip_all_btn.clicked.connect(lambda: self.set_policy(FileOverwritePolicy.SKIP_ALL))
+        self.skip_all_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #9E9E9E;
+                color: white;
+                border: none;
+                padding: 8px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #757575;
+            }
+        """)
+        
+        button_layout.addWidget(self.overwrite_btn)
+        button_layout.addWidget(self.overwrite_all_btn)
+        button_layout.addWidget(self.skip_btn)
+        button_layout.addWidget(self.skip_all_btn)
+        
+        layout.addLayout(button_layout)
+        
+    def set_policy(self, policy: str):
+        """
+        设置覆盖策略并关闭对话框
+        """
+        self.policy = policy
+        self.accept()
+        
+    def get_policy(self) -> str:
+        """
+        获取用户选择的策略
+        """
+        return self.policy
 
 
 class FileTransferWorker(QThread):
@@ -17,16 +156,20 @@ class FileTransferWorker(QThread):
     progress_updated = pyqtSignal(str, int)  # 文件名, 进度
     transfer_completed = pyqtSignal(str)  # 文件名
     transfer_error = pyqtSignal(str, str)  # 文件名, 错误信息
+    transfer_skipped = pyqtSignal(str)  # 跳过的文件名
+    file_exists_check = pyqtSignal(str, str)  # 文件名, 远程路径 - 需要用户确认
     all_completed = pyqtSignal()  # 所有传输完成
     
     def __init__(self, server_config: ServerConfig, transfer_type: str, 
-                 local_paths: List[str], remote_path: str):
-        super().__init__()
+                 local_paths: List[str], remote_path: str, parent=None):
+        super().__init__(parent)
         self.server_config = server_config
         self.transfer_type = transfer_type  # "upload" 或 "download"
         self.local_paths = local_paths
         self.remote_path = remote_path
         self.ssh_client = None
+        self.overwrite_policy = FileOverwritePolicy.ASK
+        self.pending_file = None  # 待处理的文件信息
         
     def run(self):
         """
@@ -63,6 +206,14 @@ class FileTransferWorker(QThread):
             if self.ssh_client:
                 self.ssh_client.disconnect_from_server()
     
+    def set_overwrite_policy(self, policy: str):
+        """
+        设置覆盖策略
+        """
+        self.overwrite_policy = policy
+        if self.ssh_client:
+            self.ssh_client.set_overwrite_policy(policy)
+    
     def _upload_files(self):
         """
         上传文件
@@ -73,13 +224,33 @@ class FileTransferWorker(QThread):
                     # 上传单个文件
                     filename = os.path.basename(local_path)
                     remote_file_path = f"{self.remote_path}/{filename}"
+                    
                     if self.ssh_client:
-                        self.ssh_client.upload_file(local_path, remote_file_path)
+                        # 检查文件是否存在
+                        if self.ssh_client.check_remote_file_exists(remote_file_path):
+                            # 文件存在，根据策略处理
+                            if self.overwrite_policy == FileOverwritePolicy.SKIP_ALL:
+                                logger.info(f"跳过已存在的文件: {filename}")
+                                self.transfer_skipped.emit(filename)
+                                continue
+                            elif self.overwrite_policy == FileOverwritePolicy.ASK:
+                                # 需要用户确认，发出信号
+                                self.file_exists_check.emit(filename, remote_file_path)
+                                # 暂时跳过，等待主线程处理
+                                continue
+                            # OVERWRITE_ALL 策略继续执行
+                        
+                        # 设置 SSH 客户端的覆盖策略
+                        self.ssh_client.set_overwrite_policy(self.overwrite_policy)
+                        result = self.ssh_client.upload_file(local_path, remote_file_path, check_exists=False)
+                        if not result:
+                            self.transfer_skipped.emit(filename)
                 elif os.path.isdir(local_path):
                     # 上传整个目录
                     dirname = os.path.basename(local_path)
                     remote_dir_path = f"{self.remote_path}/{dirname}"
                     if self.ssh_client:
+                        self.ssh_client.set_overwrite_policy(self.overwrite_policy)
                         self.ssh_client.upload_directory(local_path, remote_dir_path)
             except Exception as e:
                 error_msg = f"上传 '{local_path}' 时发生错误: {str(e)}"
@@ -162,6 +333,8 @@ class RemoteBrowserDialog(QDialog):
         self.file_tree.setHeaderLabels(["名称", "修改时间", "大小", "类型"])
         self.file_tree.setRootIsDecorated(False)
         self.file_tree.setAlternatingRowColors(True)
+        self.file_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.file_tree.customContextMenuRequested.connect(self.show_context_menu)
         
         header = self.file_tree.header()
         if header:
@@ -300,6 +473,248 @@ class RemoteBrowserDialog(QDialog):
             else:
                 self.current_path = "/"
             self.refresh_directory()
+    
+    def show_context_menu(self, position):
+        """
+        显示右键菜单
+        """
+        item = self.file_tree.itemAt(position)
+        menu = QMenu(self)
+        
+        if item:
+            # 选中了文件或目录
+            filename = item.text(0)
+            if filename == "..":
+                # 上级目录项，不显示菜单
+                return
+                
+            is_directory = item.data(0, Qt.ItemDataRole.UserRole)
+            
+            if isinstance(is_directory, bool):
+                # 构建完整路径
+                if self.current_path == "/":
+                    item_path = f"/{filename}"
+                else:
+                    item_path = f"{self.current_path}/{filename}"
+                
+                if is_directory:
+                    # 目录菜单
+                    enter_action = QAction("进入目录", self)
+                    enter_action.triggered.connect(lambda: self.enter_directory(item_path))
+                    menu.addAction(enter_action)
+                    
+                    menu.addSeparator()
+                    
+                    # 新建文件/文件夹
+                    new_file_action = QAction("新建文件", self)
+                    new_file_action.triggered.connect(lambda: self.create_new_file(item_path))
+                    menu.addAction(new_file_action)
+                    
+                    new_folder_action = QAction("新建文件夹", self)
+                    new_folder_action.triggered.connect(lambda: self.create_new_folder(item_path))
+                    menu.addAction(new_folder_action)
+                    
+                    menu.addSeparator()
+                    
+                    # 重命名
+                    rename_action = QAction("重命名", self)
+                    rename_action.triggered.connect(lambda: self.rename_item(item_path, True))
+                    menu.addAction(rename_action)
+                    
+                    # 删除
+                    delete_action = QAction("删除目录", self)
+                    delete_action.triggered.connect(lambda: self.delete_item(item_path, True))
+                    menu.addAction(delete_action)
+                else:
+                    # 文件菜单
+                    # 编辑文件
+                    edit_action = QAction("编辑文件", self)
+                    edit_action.triggered.connect(lambda: self.edit_file(item_path))
+                    menu.addAction(edit_action)
+                    
+                    menu.addSeparator()
+                    
+                    # 重命名
+                    rename_action = QAction("重命名", self)
+                    rename_action.triggered.connect(lambda: self.rename_item(item_path, False))
+                    menu.addAction(rename_action)
+                    
+                    # 删除
+                    delete_action = QAction("删除文件", self)
+                    delete_action.triggered.connect(lambda: self.delete_item(item_path, False))
+                    menu.addAction(delete_action)
+        else:
+            # 未选中任何项，显示当前目录操作
+            new_file_action = QAction("新建文件", self)
+            new_file_action.triggered.connect(lambda: self.create_new_file(self.current_path))
+            menu.addAction(new_file_action)
+            
+            new_folder_action = QAction("新建文件夹", self)
+            new_folder_action.triggered.connect(lambda: self.create_new_folder(self.current_path))
+            menu.addAction(new_folder_action)
+            
+        viewport = self.file_tree.viewport()
+        if viewport:
+            menu.exec(viewport.mapToGlobal(position))
+    
+    def enter_directory(self, path):
+        """
+        进入目录
+        """
+        self.current_path = path
+        self.refresh_directory()
+    
+    def create_new_file(self, parent_path):
+        """
+        在远程目录创建新文件
+        """
+        if not self.ssh_client:
+            QMessageBox.warning(self, "警告", "未连接到服务器")
+            return
+            
+        # 输入文件名
+        filename, ok = QInputDialog.getText(self, "新建文件", "请输入文件名:")
+        if not ok or not filename:
+            return
+            
+        try:
+            # 构建完整路径
+            remote_file_path = f"{parent_path}/{filename}".replace("//", "/")
+            
+            # 检查文件是否已存在
+            if self.ssh_client.check_remote_file_exists(remote_file_path):
+                QMessageBox.warning(self, "警告", f"文件 '{filename}' 已存在！")
+                return
+                
+            self.ssh_client.create_remote_file(remote_file_path)
+            
+            # 刷新目录
+            self.refresh_directory()
+            QMessageBox.information(self, "成功", f"文件 '{filename}' 创建成功！")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"创建文件时发生错误：{str(e)}")
+    
+    def create_new_folder(self, parent_path):
+        """
+        在远程目录创建新文件夹
+        """
+        if not self.ssh_client:
+            QMessageBox.warning(self, "警告", "未连接到服务器")
+            return
+            
+        # 输入文件夹名
+        foldername, ok = QInputDialog.getText(self, "新建文件夹", "请输入文件夹名:")
+        if not ok or not foldername:
+            return
+            
+        try:
+            # 构建完整路径
+            remote_folder_path = f"{parent_path}/{foldername}".replace("//", "/")
+            
+            # 检查文件夹是否已存在
+            if self.ssh_client.check_remote_file_exists(remote_folder_path):
+                QMessageBox.warning(self, "警告", f"文件夹 '{foldername}' 已存在！")
+                return
+                
+            self.ssh_client.create_remote_directory(remote_folder_path)
+            
+            # 刷新目录
+            self.refresh_directory()
+            QMessageBox.information(self, "成功", f"文件夹 '{foldername}' 创建成功！")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"创建文件夹时发生错误：{str(e)}")
+    
+    def rename_item(self, old_path, is_directory):
+        """
+        重命名远程文件或目录
+        """
+        if not self.ssh_client:
+            QMessageBox.warning(self, "警告", "未连接到服务器")
+            return
+            
+        old_name = os.path.basename(old_path)
+        item_type = "目录" if is_directory else "文件"
+        
+        # 输入新名称
+        new_name, ok = QInputDialog.getText(
+            self, 
+            f"重命名{item_type}", 
+            f"请输入新的{item_type}名:",
+            text=old_name
+        )
+        if not ok or not new_name or new_name == old_name:
+            return
+            
+        try:
+            # 构建新路径
+            parent_path = os.path.dirname(old_path)
+            new_path = f"{parent_path}/{new_name}".replace("//", "/")
+            
+            # 检查新名称是否已存在
+            if self.ssh_client.check_remote_file_exists(new_path):
+                QMessageBox.warning(self, "警告", f"{item_type} '{new_name}' 已存在！")
+                return
+                
+            self.ssh_client.rename_remote_file(old_path, new_path)
+            
+            # 刷新目录
+            self.refresh_directory()
+            QMessageBox.information(self, "成功", f"{item_type} '{old_name}' 已重命名为 '{new_name}'！")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"重命名{item_type}时发生错误：{str(e)}")
+    
+    def delete_item(self, remote_path, is_directory):
+        """
+        删除远程文件或目录
+        """
+        if not self.ssh_client:
+            QMessageBox.warning(self, "警告", "未连接到服务器")
+            return
+            
+        item_name = os.path.basename(remote_path)
+        item_type = "目录" if is_directory else "文件"
+        
+        # 确认删除
+        reply = QMessageBox.question(
+            self,
+            "确认删除",
+            f"确定要删除{item_type} '{item_name}' 吗？\n\n此操作不可恢复！",
+            QMessageBox.Yes | QMessageBox.No  # type: ignore
+        )
+        
+        if reply != QMessageBox.Yes:
+            return
+            
+        try:
+            if is_directory:
+                self.ssh_client.delete_remote_directory(remote_path)
+            else:
+                self.ssh_client.delete_remote_file(remote_path)
+                
+            # 刷新目录
+            self.refresh_directory()
+            QMessageBox.information(self, "成功", f"{item_type} '{item_name}' 已删除！")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"删除{item_type}时发生错误：{str(e)}")
+    
+    def edit_file(self, remote_path):
+        """
+        编辑远程文件
+        """
+        if not self.ssh_client:
+            QMessageBox.warning(self, "警告", "未连接到服务器")
+            return
+            
+        try:
+            # 导入远程文件编辑器
+            from .remote_file_browser_panel import RemoteFileEditorDialog
+            
+            editor = RemoteFileEditorDialog(self.ssh_client, remote_path, self)
+            # 连接文件保存成功信号，保存后刷新目录
+            editor.file_saved.connect(self.refresh_directory)
+            editor.exec()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"打开文件编辑器时发生错误：{str(e)}")
             
     def get_selected_path(self):
         """
@@ -702,13 +1117,16 @@ class FileTransferDialog(QDialog):
             self.server_config, 
             self.transfer_type, 
             local_paths, 
-            remote_path
+            remote_path,
+            self
         )
         
         # 连接信号
         self.worker.progress_updated.connect(self.update_progress)
         self.worker.transfer_completed.connect(self.on_transfer_completed)
         self.worker.transfer_error.connect(self.on_transfer_error)
+        self.worker.transfer_skipped.connect(self.on_transfer_skipped)
+        self.worker.file_exists_check.connect(self.on_file_exists_check)
         self.worker.all_completed.connect(self.on_all_completed)
         
         # 禁用开始按钮，显示进度条
@@ -746,6 +1164,66 @@ class FileTransferDialog(QDialog):
                 break
                 
         self.status_label.setText(f"已完成: {filename}")
+    
+    def on_transfer_skipped(self, filename):
+        """
+        处理文件跳过
+        """
+        # 更新文件状态
+        for i in range(self.file_tree.topLevelItemCount()):
+            item = self.file_tree.topLevelItem(i)
+            if item and item.text(0) == filename:
+                item.setText(2, "跳过")
+                break
+                
+        self.status_label.setText(f"已跳过: {filename}")
+    
+    def on_file_exists_check(self, filename, remote_path):
+        """
+        处理文件存在检查，弹出确认对话框
+        """
+        # 在主线程中显示对话框
+        dialog = FileOverwriteDialog(filename, self)
+        result = dialog.exec()
+        
+        if result == QDialog.DialogCode.Accepted:
+            policy = dialog.get_policy()
+            
+            # 根据用户选择处理
+            if policy == FileOverwritePolicy.OVERWRITE:
+                # 覆盖当前文件
+                if self.worker and self.worker.ssh_client:
+                    try:
+                        # 找到原始本地文件路径
+                        local_path = None
+                        for path in self.transfer_items:
+                            if os.path.basename(path) == filename:
+                                local_path = path
+                                break
+                        
+                        if local_path:
+                            self.worker.ssh_client.set_overwrite_policy(FileOverwritePolicy.OVERWRITE_ALL)
+                            self.worker.ssh_client.upload_file(local_path, remote_path, check_exists=False)
+                    except Exception as e:
+                        self.on_transfer_error(filename, str(e))
+                        
+            elif policy == FileOverwritePolicy.OVERWRITE_ALL:
+                # 设置全部覆盖策略
+                if self.worker:
+                    self.worker.set_overwrite_policy(FileOverwritePolicy.OVERWRITE_ALL)
+                    # 重启传输
+                    self.worker.start()
+                    
+            elif policy == FileOverwritePolicy.SKIP:
+                # 跳过当前文件
+                self.on_transfer_skipped(filename)
+                
+            elif policy == FileOverwritePolicy.SKIP_ALL:
+                # 设置全部跳过策略
+                if self.worker:
+                    self.worker.set_overwrite_policy(FileOverwritePolicy.SKIP_ALL)
+                    # 继续传输剩余文件
+                    self.worker.start()
     
     def on_transfer_error(self, filename, error_msg):
         """

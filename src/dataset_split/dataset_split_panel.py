@@ -422,11 +422,15 @@ class DatasetSplitPanel(QWidget):
     """
     数据集划分面板类（用于模型训练）
     """
+    
+    # 添加信号：当数据集划分完成时发送输出路径
+    dataset_split_completed = pyqtSignal(str)  # 输出路径
 
     def __init__(self):
         super().__init__()
         self.worker = None
         self.param_inputs = []  # 存储参数输入框的列表
+        self.output_dataset_path = None  # 存储划分后的数据集路径
         self.init_ui()
 
     def init_ui(self):
@@ -957,6 +961,10 @@ class DatasetSplitPanel(QWidget):
         self.split_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # 设置为不确定模式
+        
+        # 保存输出路径，用于划分完成后导入
+        dataset_name = os.path.basename(os.path.normpath(dataset_path))
+        self.output_dataset_path = os.path.join(output_path, f"{dataset_name}_train")
 
         # 创建并启动工作线程
         self.worker = SplitWorker(dataset_path, output_path, train_ratio, val_ratio, test_ratio, generate_script, train_params)
@@ -974,6 +982,11 @@ class DatasetSplitPanel(QWidget):
         if success:
             QMessageBox.information(self, "成功", message)
             logger.info(message)
+            
+            # 发送信号，通知主窗口导入划分后的数据集文件夹
+            if self.output_dataset_path and os.path.exists(self.output_dataset_path):
+                self.dataset_split_completed.emit(self.output_dataset_path)
+                logger.info(f"发送数据集导入信号: {self.output_dataset_path}")
         else:
             QMessageBox.critical(self, "错误", message)
             logger.error(message)

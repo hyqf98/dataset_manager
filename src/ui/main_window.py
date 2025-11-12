@@ -17,6 +17,7 @@ from ..dataset_split.dataset_split_panel import DatasetSplitPanel
 from ..remote_server.server_config_panel import ServerConfigPanel
 from ..remote_server.file_transfer_dialog import FileTransferDialog
 from ..remote_server.server_config import ServerConfigManager, ServerConfig
+from ..remote_server.remote_file_browser_panel import RemoteFileBrowserPanel
 
 class MainWindow(QMainWindow):
     """
@@ -215,11 +216,16 @@ class MainWindow(QMainWindow):
                     dataset_split_menu.addAction(dataset_split_action)
 
                 # 文件上传菜单
-                file_upload_menu = menubar.addMenu('文件上传')
+                file_upload_menu = menubar.addMenu('远程服务器管理')
                 if file_upload_menu:
                     server_management_action = QAction('服务器管理', self)
                     server_management_action.triggered.connect(self.open_server_config_panel)
                     file_upload_menu.addAction(server_management_action)
+                    
+                    # 添加远程文件浏览器菜单项
+                    remote_browser_action = QAction('远程文件浏览器', self)
+                    remote_browser_action.triggered.connect(self.open_remote_file_browser)
+                    file_upload_menu.addAction(remote_browser_action)
                     # 移除上传和下载菜单项
 
                 # 视图菜单
@@ -642,6 +648,9 @@ class MainWindow(QMainWindow):
             # 每次都创建新的实例，避免使用已销毁的对象
             self.dataset_split_panel = DatasetSplitPanel()
             
+            # 连接数据集划分完成信号
+            self.dataset_split_panel.dataset_split_completed.connect(self.on_dataset_split_completed)
+            
             # 创建对话框并显示面板
             dialog = QDialog(self)
             dialog.setWindowTitle("模型训练")
@@ -650,13 +659,35 @@ class MainWindow(QMainWindow):
             dialog.resize(600, 400)
             dialog.exec()
             
-            # 清理引用，避免访问已销毁的对象
+            # 断开信号连接并清理引用，避免访问已销毁的对象
+            try:
+                self.dataset_split_panel.dataset_split_completed.disconnect(self.on_dataset_split_completed)
+            except (TypeError, RuntimeError):
+                # 如果信号未连接或对象已销毁，则忽略错误
+                pass
             if hasattr(self, 'dataset_split_panel'):
                 delattr(self, 'dataset_split_panel')
         except Exception as e:
             logger.error(f"打开数据集划分面板时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"打开数据集划分面板时发生异常: {str(e)}")
+    
+    def on_dataset_split_completed(self, output_path):
+        """
+        处理数据集划分完成事件，自动导入划分后的数据集文件夹
+        
+        Args:
+            output_path (str): 划分后的数据集路径
+        """
+        try:
+            if output_path and os.path.exists(output_path):
+                logger.info(f"数据集划分完成，自动导入: {output_path}")
+                # 调用文件管理器的导入方法
+                self.file_manager_panel.import_folder(output_path)
+                logger.info(f"已将划分后的数据集导入到文件列表: {output_path}")
+        except Exception as e:
+            logger.error(f"导入划分后的数据集时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
 
     def open_server_config_panel(self):
         """
@@ -681,6 +712,30 @@ class MainWindow(QMainWindow):
             logger.error(f"打开服务器配置面板时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"打开服务器配置面板时发生异常: {str(e)}")
+
+    def open_remote_file_browser(self):
+        """
+        打开远程文件浏览器
+        """
+        try:
+            # 每次都创建新的实例，避免使用已销毁的对象
+            self.remote_file_browser_panel = RemoteFileBrowserPanel()
+            
+            # 创建对话框并显示面板
+            dialog = QDialog(self)
+            dialog.setWindowTitle("远程文件浏览器")
+            layout = QHBoxLayout(dialog)
+            layout.addWidget(self.remote_file_browser_panel)
+            dialog.resize(900, 700)
+            dialog.exec()
+            
+            # 清理引用，避免访问已销毁的对象
+            if hasattr(self, 'remote_file_browser_panel'):
+                delattr(self, 'remote_file_browser_panel')
+        except Exception as e:
+            logger.error(f"打开远程文件浏览器时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"打开远程文件浏览器时发生异常: {str(e)}")
 
     def eventFilter(self, a0, a1):  # type: ignore
         """

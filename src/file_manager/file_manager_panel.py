@@ -480,8 +480,37 @@ class FileManagerUI(QWidget):
             # 设置TreeView的大小策略，确保可以滚动
             from PyQt5.QtWidgets import QSizePolicy
             self.tree_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-            # 应用滚动条样式，使其更加明显
-            self.tree_view.setStyleSheet(self.get_scrollbar_style())
+            
+            # 应用滚动条样式，使其更加明显（使用QTreeView选择器确保样式不被覆盖）
+            scrollbar_style = self.get_scrollbar_style()
+            # 添加QTreeView前缀确保样式只应用到当前TreeView
+            tree_view_style = f"QTreeView {{ border: none; }} {scrollbar_style}"
+            self.tree_view.setStyleSheet(tree_view_style)
+            
+            # 强制设置滚动条的最小尺寸，确保滚动条可见
+            # 获取垂直滚动条并设置其属性
+            v_scrollbar = self.tree_view.verticalScrollBar()
+            if v_scrollbar:
+                v_scrollbar.setMinimumWidth(15)
+                v_scrollbar.setMaximumWidth(15)
+                # 强制显示
+                v_scrollbar.setVisible(True)
+                # 设置范围，确保滚动条激活
+                v_scrollbar.setRange(0, 1000)  # 设置一个足够大的范围
+                logger.info(f"垂直滚动条设置完成: 宽度=15px, 可见={v_scrollbar.isVisible()}")
+            else:
+                logger.warning("无法获取垂直滚动条")
+            
+            # 获取水平滚动条并设置其属性（比垂直滚动条更细）
+            h_scrollbar = self.tree_view.horizontalScrollBar()
+            if h_scrollbar:
+                h_scrollbar.setMinimumHeight(12)
+                h_scrollbar.setMaximumHeight(12)
+                # 设置范围，确保滚动条激活
+                h_scrollbar.setRange(0, 1000)  # 设置一个足够大的范围
+                logger.info(f"水平滚动条设置完成: 高度=12px, 可见={h_scrollbar.isVisible()}")
+            else:
+                logger.warning("无法获取水平滚动条")
 
             # 问题1修复：启用拖拽功能，支持内部和外部拖动
             self.tree_view.setDragEnabled(True)
@@ -596,7 +625,7 @@ class FileManagerUI(QWidget):
     def get_scrollbar_style(self):
         """
         获取滚动条样式，使其更加明显易见
-        上下滚动条较细，左右滚动条较粗
+        上下和左右滚动条都使用相同的细尺寸
 
         Returns:
             str: CSS样式字符串
@@ -606,13 +635,14 @@ class FileManagerUI(QWidget):
                 QScrollBar:vertical {
                     border: 1px solid #999999;
                     background: #f0f0f0;
-                    width: 10px;
+                    width: 15px;
                     margin: 0px 0px 0px 0px;
                 }
                 QScrollBar::handle:vertical {
                     background: #4CAF50;
-                    min-height: 20px;
-                    border-radius: 5px;
+                    min-height: 30px;
+                    border-radius: 7px;
+                    border: 1px solid #45a049;
                 }
                 QScrollBar::handle:vertical:hover {
                     background: #45a049;
@@ -631,19 +661,20 @@ class FileManagerUI(QWidget):
                     height: 0px;
                 }
                 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                    background: none;
+                    background: #e0e0e0;
                 }
                 
                 QScrollBar:horizontal {
                     border: 1px solid #999999;
                     background: #f0f0f0;
-                    height: 18px;
+                    height: 12px;
                     margin: 0px 0px 0px 0px;
                 }
                 QScrollBar::handle:horizontal {
                     background: #4CAF50;
                     min-width: 30px;
-                    border-radius: 9px;
+                    border-radius: 7px;
+                    border: 1px solid #45a049;
                 }
                 QScrollBar::handle:horizontal:hover {
                     background: #45a049;
@@ -662,7 +693,7 @@ class FileManagerUI(QWidget):
                     width: 0px;
                 }
                 QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-                    background: none;
+                    background: #e0e0e0;
                 }
             """
         except Exception as e:
@@ -1537,6 +1568,7 @@ class FileManagerPanel(QWidget):
         self.delete_folder = "delete"  # 回收站文件夹名
         self.imported_root_paths = []  # 保存导入的根路径列表
         self.drag_source_path = None  # 保存拖拽源路径
+        self.is_searching = False  # 标记是否正在搜索，用于阻止搜索时触发预览
         
         # 问题4修复：初始化文件系统监听器
         self.file_watcher = QFileSystemWatcher()
@@ -1628,11 +1660,14 @@ class FileManagerPanel(QWidget):
             if not self.ui or not self.ui.tree_view or not self.ui.model:
                 return
 
+            # 设置搜索标志，阻止预览
+            self.is_searching = True
+            
             # 从模型根节点开始递归查找
             matched_index = self._find_file_in_model(self.ui.model.invisibleRootItem(), search_text.lower())
 
             if matched_index and matched_index.isValid():
-                # 选中找到的文件
+                # 选中找到的文件（不触发预览）
                 self.ui.tree_view.setCurrentIndex(matched_index)
                 # 展开到该文件的路径
                 parent = matched_index.parent()
@@ -1641,11 +1676,15 @@ class FileManagerPanel(QWidget):
                     parent = parent.parent()
                 # 滚动到该文件可见
                 self.ui.tree_view.scrollTo(matched_index)
-                # 问题2修复：搜索时不触发预览
-                logger.debug(f"找到并选中文件: {search_text}")
+                logger.debug(f"找到并选中文件: {search_text}（不触发预览）")
+            
+            # 重置搜索标志
+            self.is_searching = False
         except Exception as e:
             logger.error(f"查找并选中文件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
+            # 确保重置搜索标志
+            self.is_searching = False
 
     def _find_file_in_model(self, parent_item, search_text):
         """
@@ -2461,6 +2500,11 @@ class FileManagerPanel(QWidget):
             previous: 之前选中的索引
         """
         try:
+            # 如果正在搜索，不触发预览
+            if self.is_searching:
+                logger.debug("搜索中，跳过预览触发")
+                return
+            
             if current.isValid():
                 # 使用自定义模型的 get_file_path 方法
                 file_path = self.ui.model.get_file_path(current) if self.ui and self.ui.model else ""

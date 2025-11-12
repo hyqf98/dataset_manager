@@ -15,12 +15,14 @@ class SSHClient(QObject):
     progress_updated = pyqtSignal(str, int)  # (文件名, 进度百分比)
     transfer_completed = pyqtSignal(str)  # (文件名)
     transfer_error = pyqtSignal(str, str)  # (文件名, 错误信息)
+    file_exists_check = pyqtSignal(str, object)  # (文件名, 回调函数)
     
     def __init__(self, server_config: ServerConfig):
         super().__init__()
         self.server_config = server_config
         self.ssh_client = None
         self.sftp_client = None
+        self.overwrite_policy = 'ask'  # 默认策略：每次询问
         
     def connect_to_server(self) -> bool:
         """
@@ -126,20 +128,68 @@ class SSHClient(QObject):
             logger.error(error_msg)
             raise Exception(error_msg)
     
-    def upload_file(self, local_path: str, remote_path: str):
+    def set_overwrite_policy(self, policy: str):
+        """
+        设置文件覆盖策略
+        
+        Args:
+            policy (str): 覆盖策略 ('ask', 'overwrite_all', 'skip_all')
+        """
+        self.overwrite_policy = policy
+        logger.info(f"设置文件覆盖策略: {policy}")
+    
+    def check_remote_file_exists(self, remote_path: str) -> bool:
+        """
+        检查远程文件是否存在
+        
+        Args:
+            remote_path (str): 远程文件路径
+            
+        Returns:
+            bool: 文件是否存在
+        """
+        try:
+            if not self.sftp_client:
+                return False
+            self.sftp_client.stat(remote_path)
+            return True
+        except FileNotFoundError:
+            return False
+        except Exception as e:
+            logger.error(f"检查远程文件是否存在时发生错误: {str(e)}")
+            return False
+    
+    def upload_file(self, local_path: str, remote_path: str, check_exists: bool = True) -> bool:
         """
         上传单个文件到远程服务器
         
         Args:
             local_path (str): 本地文件路径
             remote_path (str): 远程文件路径
+            check_exists (bool): 是否检查文件是否存在
+            
+        Returns:
+            bool: 是否成功上传（True表示上传，False表示跳过）
         """
         try:
             if not self.sftp_client:
                 raise Exception("SFTP客户端未初始化")
-                
+            
             filename = os.path.basename(local_path)
             
+            # 检查文件是否存在
+            if check_exists and self.check_remote_file_exists(remote_path):
+                # 根据策略处理
+                if self.overwrite_policy == 'skip_all':
+                    logger.info(f"跳过已存在的文件: {filename}")
+                    return False
+                elif self.overwrite_policy == 'ask':
+                    # 发出信号，让调用者处理
+                    logger.info(f"文件已存在，需要用户确认: {filename}")
+                    # 这种情况应该由FileTransferWorker处理
+                    return False
+                # overwrite_all 策略继续执行上传
+                
             # 获取本地文件大小用于进度计算
             local_size = os.path.getsize(local_path)
             
@@ -154,6 +204,7 @@ class SSHClient(QObject):
             
             self.transfer_completed.emit(filename)
             logger.info(f"上传文件 '{local_path}' 到 '{remote_path}' 完成")
+            return True
             
         except Exception as e:
             error_msg = f"上传文件失败: {str(e)}"
@@ -276,5 +327,132 @@ class SSHClient(QObject):
             
         except Exception as e:
             error_msg = f"下载目录失败: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+    
+    def create_remote_file(self, remote_path: str, content: str = "") -> bool:
+        """
+        在远程服务器创建文件
+        
+        Args:
+            remote_path (str): 远程文件路径
+            content (str): 文件内容
+            
+        Returns:
+            bool: 是否成功创建
+        """
+        try:
+            if not self.sftp_client:
+                raise Exception("SFTP客户端未初始化")
+            
+            # 创建文件并写入内容
+            with self.sftp_client.open(remote_path, 'w') as f:
+                f.write(content)
+            
+            logger.info(f"创建远程文件成功: {remote_path}")
+            return True
+        except Exception as e:
+            error_msg = f"创建远程文件失败: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+    
+    def create_remote_directory(self, remote_path: str) -> bool:
+        """
+        在远程服务器创建目录
+        
+        Args:
+            remote_path (str): 远程目录路径
+            
+        Returns:
+            bool: 是否成功创建
+        """
+        try:
+            if not self.sftp_client:
+                raise Exception("SFTP客户端未初始化")
+            
+            self.sftp_client.mkdir(remote_path)
+            logger.info(f"创建远程目录成功: {remote_path}")
+            return True
+        except Exception as e:
+            error_msg = f"创建远程目录失败: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+    
+    def rename_remote_file(self, old_path: str, new_path: str) -> bool:
+        """
+        重命名远程文件或目录
+        
+        Args:
+            old_path (str): 旧路径
+            new_path (str): 新路径
+            
+        Returns:
+            bool: 是否成功重命名
+        """
+        try:
+            if not self.sftp_client:
+                raise Exception("SFTP客户端未初始化")
+            
+            self.sftp_client.rename(old_path, new_path)
+            logger.info(f"重命名远程文件成功: {old_path} -> {new_path}")
+            return True
+        except Exception as e:
+            error_msg = f"重命名远程文件失败: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+    
+    def delete_remote_file(self, remote_path: str) -> bool:
+        """
+        删除远程文件
+        
+        Args:
+            remote_path (str): 远程文件路径
+            
+        Returns:
+            bool: 是否成功删除
+        """
+        try:
+            if not self.sftp_client:
+                raise Exception("SFTP客户端未初始化")
+            
+            self.sftp_client.remove(remote_path)
+            logger.info(f"删除远程文件成功: {remote_path}")
+            return True
+        except Exception as e:
+            error_msg = f"删除远程文件失败: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+    
+    def delete_remote_directory(self, remote_path: str) -> bool:
+        """
+        删除远程目录（递归删除）
+        
+        Args:
+            remote_path (str): 远程目录路径
+            
+        Returns:
+            bool: 是否成功删除
+        """
+        try:
+            if not self.sftp_client:
+                raise Exception("SFTP客户端未初始化")
+            
+            # 列出目录内容
+            items = self.list_remote_files(remote_path)
+            
+            # 递归删除子项
+            for filename, _, _, is_directory in items:
+                item_path = f"{remote_path}/{filename}"
+                if is_directory:
+                    self.delete_remote_directory(item_path)
+                else:
+                    self.sftp_client.remove(item_path)
+            
+            # 删除空目录
+            self.sftp_client.rmdir(remote_path)
+            logger.info(f"删除远程目录成功: {remote_path}")
+            return True
+        except Exception as e:
+            error_msg = f"删除远程目录失败: {str(e)}"
             logger.error(error_msg)
             raise Exception(error_msg)
