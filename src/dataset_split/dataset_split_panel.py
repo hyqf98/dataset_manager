@@ -1,14 +1,135 @@
 import os
 import shutil
+import json
 from enum import Enum
 from typing import Optional
-import os
-import shutil
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QFormLayout, QLineEdit, QFileDialog, QMessageBox, QDoubleSpinBox, QLabel, QProgressBar, QHBoxLayout, QCheckBox
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QFormLayout, QLineEdit, QFileDialog, 
+                             QMessageBox, QDoubleSpinBox, QLabel, QProgressBar, QHBoxLayout, QCheckBox,
+                             QTreeWidget, QTreeWidgetItem, QHeaderView, QDialog, QDialogButtonBox, QTextEdit)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 from ..logging_config import logger
 import yaml
+
+
+class DatasetSplitConfig:
+    """
+    数据集划分配置类
+    """
+    
+    def __init__(self, name="", dataset_path="", output_path="", 
+                 train_ratio=0.7, val_ratio=0.2, test_ratio=0.1,
+                 generate_script=False, train_params="", config_id=None):
+        self.id = config_id
+        self.name = name
+        self.dataset_path = dataset_path
+        self.output_path = output_path
+        self.train_ratio = train_ratio
+        self.val_ratio = val_ratio
+        self.test_ratio = test_ratio
+        self.generate_script = generate_script
+        self.train_params = train_params
+        
+    def to_dict(self):
+        """转换为字典"""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'dataset_path': self.dataset_path,
+            'output_path': self.output_path,
+            'train_ratio': self.train_ratio,
+            'val_ratio': self.val_ratio,
+            'test_ratio': self.test_ratio,
+            'generate_script': self.generate_script,
+            'train_params': self.train_params
+        }
+    
+    @classmethod
+    def from_dict(cls, data):
+        """从字典创建对象"""
+        return cls(
+            name=data.get('name', ''),
+            dataset_path=data.get('dataset_path', ''),
+            output_path=data.get('output_path', ''),
+            train_ratio=data.get('train_ratio', 0.7),
+            val_ratio=data.get('val_ratio', 0.2),
+            test_ratio=data.get('test_ratio', 0.1),
+            generate_script=data.get('generate_script', False),
+            train_params=data.get('train_params', ''),
+            config_id=data.get('id')
+        )
+
+
+class DatasetSplitConfigManager:
+    """
+    数据集划分配置管理器
+    """
+    
+    def __init__(self):
+        # 配置文件路径设置为用户目录下的.dataset_m路径
+        user_home = os.path.expanduser("~")
+        dataset_manager_dir = os.path.join(user_home, ".dataset_m")
+        os.makedirs(dataset_manager_dir, exist_ok=True)
+        self.config_file = os.path.join(dataset_manager_dir, "dataset_split_configs.json")
+        
+        self.configs = []
+        self.load_configs()
+        
+    def load_configs(self):
+        """加载配置"""
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.configs = [DatasetSplitConfig.from_dict(item) for item in data]
+                logger.info(f"加载了 {len(self.configs)} 个数据集划分配置")
+            else:
+                self.configs = []
+                logger.info("未找到数据集划分配置文件，初始化空列表")
+        except Exception as e:
+            logger.error(f"加载数据集划分配置时出错: {e}")
+            self.configs = []
+            
+    def save_configs(self):
+        """保存配置"""
+        try:
+            data = [config.to_dict() for config in self.configs]
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            logger.info(f"保存了 {len(self.configs)} 个数据集划分配置")
+        except Exception as e:
+            logger.error(f"保存数据集划分配置时出错: {e}")
+            QMessageBox.critical(None, "错误", f"保存配置时出错: {e}")
+            
+    def add_config(self, config):
+        """添加配置"""
+        if self.configs:
+            config.id = max(c.id for c in self.configs if c.id) + 1
+        else:
+            config.id = 1
+        self.configs.append(config)
+        self.save_configs()
+        logger.info(f"添加数据集划分配置: {config.name}")
+        
+    def update_config(self, config):
+        """更新配置"""
+        for i, c in enumerate(self.configs):
+            if c.id == config.id:
+                self.configs[i] = config
+                self.save_configs()
+                logger.info(f"更新数据集划分配置: {config.name}")
+                return True
+        return False
+        
+    def delete_config(self, config_id):
+        """删除配置"""
+        self.configs = [c for c in self.configs if c.id != config_id]
+        self.save_configs()
+        logger.info(f"删除数据集划分配置 ID: {config_id}")
+        
+    def get_configs(self):
+        """获取所有配置"""
+        return self.configs
 
 
 class DatasetSplitter:
@@ -23,7 +144,7 @@ class DatasetSplitter:
 
         Args:
             dataset_path (str): 数据集路径
-            output_path (str): 输出路径
+            output_path (str): 输出路径（直接使用，不再添加数据集名称后缀）
             train_ratio (float): 训练集比例
             val_ratio (float): 验证集比例
             test_ratio (float): 测试集比例
@@ -41,9 +162,11 @@ class DatasetSplitter:
             if abs(total_ratio - 1.0) > 1e-6:
                 raise ValueError("训练集、验证集和测试集比例之和必须为1.0")
 
-            # 问题3修复：使用数据集文件夹名称_train作为导出名称
-            dataset_name = os.path.basename(os.path.normpath(dataset_path))
-            output_path = os.path.join(output_path, f"{dataset_name}_train")
+            # 优化: 如果输出路径已存在，先删除再创建
+            if os.path.exists(output_path):
+                logger.info(f"输出路径已存在，删除旧数据: {output_path}")
+                shutil.rmtree(output_path)
+                logger.info("旧数据删除完成")
 
             # 创建输出目录结构
             train_dir = os.path.join(output_path, "train")
@@ -55,6 +178,8 @@ class DatasetSplitter:
                 labels_dir = os.path.join(dir_path, "labels")
                 os.makedirs(images_dir, exist_ok=True)
                 os.makedirs(labels_dir, exist_ok=True)
+            
+            logger.info(f"创建输出目录结构: {output_path}")
 
             # 获取所有图片文件（递归查找所有层级，问题4修复：过滤delete文件夹）
             image_files = []
@@ -125,6 +250,7 @@ class DatasetSplitter:
             DatasetSplitter._generate_yaml_config(output_path, class_names)
 
             logger.info(f"数据集划分完成: 训练集{len(train_files)}张, 验证集{len(val_files)}张, 测试集{len(test_files)}张")
+            logger.info(f"输出路径: {output_path}")
             return True
         except Exception as e:
             logger.error(f"数据集划分失败: {str(e)}")
@@ -299,7 +425,7 @@ class DatasetSplitter:
             os.makedirs(output_path)
 
         # 读取模板文件
-        template_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'train_template.py')
+        template_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'train_template.py.jinja')
         
         if not os.path.exists(template_path):
             logger.error(f"训练脚本模板不存在: {template_path}")
@@ -990,3 +1116,426 @@ class DatasetSplitPanel(QWidget):
         else:
             QMessageBox.critical(self, "错误", message)
             logger.error(message)
+
+
+class DatasetSplitConfigDialog(QDialog):
+    """
+    数据集划分配置对话框
+    """
+    
+    def __init__(self, parent=None, config=None):
+        super().__init__(parent)
+        self.config = config
+        self.param_inputs = []
+        
+        self.setWindowTitle("添加数据集划分配置" if config is None else "编辑数据集划分配置")
+        self.setModal(True)
+        self.resize(600, 500)
+        self.init_ui()
+        
+    def init_ui(self):
+        """初始化界面"""
+        layout = QVBoxLayout(self)
+        
+        # 表单布局
+        form_layout = QFormLayout()
+        
+        # 配置名称
+        self.name_edit = QLineEdit()
+        if self.config:
+            self.name_edit.setText(self.config.name)
+        form_layout.addRow("配置名称:", self.name_edit)
+        
+        # 数据集路径
+        dataset_layout = QHBoxLayout()
+        self.dataset_path_edit = QLineEdit()
+        self.dataset_path_edit.setReadOnly(True)
+        self.dataset_browse_btn = QPushButton("浏览...")
+        self.dataset_browse_btn.clicked.connect(self.browse_dataset_path)
+        dataset_layout.addWidget(self.dataset_path_edit)
+        dataset_layout.addWidget(self.dataset_browse_btn)
+        if self.config:
+            self.dataset_path_edit.setText(self.config.dataset_path)
+        form_layout.addRow("数据集路径:", dataset_layout)
+        
+        # 输出路径
+        output_layout = QHBoxLayout()
+        self.output_path_edit = QLineEdit()
+        self.output_path_edit.setReadOnly(True)
+        self.output_browse_btn = QPushButton("浏览...")
+        self.output_browse_btn.clicked.connect(self.browse_output_path)
+        output_layout.addWidget(self.output_path_edit)
+        output_layout.addWidget(self.output_browse_btn)
+        if self.config:
+            self.output_path_edit.setText(self.config.output_path)
+        form_layout.addRow("输出路径:", output_layout)
+        
+        # 比例设置
+        self.train_ratio_spin = QDoubleSpinBox()
+        self.train_ratio_spin.setRange(0.0, 1.0)
+        self.train_ratio_spin.setSingleStep(0.05)
+        self.train_ratio_spin.setDecimals(2)
+        self.train_ratio_spin.setValue(self.config.train_ratio if self.config else 0.7)
+        form_layout.addRow("训练集比例:", self.train_ratio_spin)
+        
+        self.val_ratio_spin = QDoubleSpinBox()
+        self.val_ratio_spin.setRange(0.0, 1.0)
+        self.val_ratio_spin.setSingleStep(0.05)
+        self.val_ratio_spin.setDecimals(2)
+        self.val_ratio_spin.setValue(self.config.val_ratio if self.config else 0.2)
+        form_layout.addRow("验证集比例:", self.val_ratio_spin)
+        
+        self.test_ratio_spin = QDoubleSpinBox()
+        self.test_ratio_spin.setRange(0.0, 1.0)
+        self.test_ratio_spin.setSingleStep(0.05)
+        self.test_ratio_spin.setDecimals(2)
+        self.test_ratio_spin.setValue(self.config.test_ratio if self.config else 0.1)
+        form_layout.addRow("测试集比例:", self.test_ratio_spin)
+        
+        # 生成训练脚本
+        self.generate_script_check = QCheckBox("生成训练脚本")
+        if self.config:
+            self.generate_script_check.setChecked(self.config.generate_script)
+        self.generate_script_check.stateChanged.connect(self.on_generate_script_changed)
+        form_layout.addRow("", self.generate_script_check)
+        
+        # 训练参数
+        self.params_widget = QWidget()
+        self.params_widget.setVisible(False)
+        params_layout = QVBoxLayout(self.params_widget)
+        
+        self.train_params_edit = QTextEdit()
+        self.train_params_edit.setPlaceholderText("格式: key1=value1 key2=value2")
+        self.train_params_edit.setMaximumHeight(100)
+        if self.config:
+            self.train_params_edit.setText(self.config.train_params)
+        params_layout.addWidget(QLabel("训练参数:"))
+        params_layout.addWidget(self.train_params_edit)
+        
+        form_layout.addRow(self.params_widget)
+        
+        layout.addLayout(form_layout)
+        
+        # 按钮
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+        # 初始化时检查是否显示参数区域
+        if self.config and self.config.generate_script:
+            self.params_widget.setVisible(True)
+        
+    def on_generate_script_changed(self, state):
+        """切换生成脚本状态"""
+        self.params_widget.setVisible(state == Qt.Checked)
+        
+    def browse_dataset_path(self):
+        """浏览数据集路径"""
+        path = QFileDialog.getExistingDirectory(self, "选择数据集路径")
+        if path:
+            self.dataset_path_edit.setText(path)
+            
+    def browse_output_path(self):
+        """浏览输出路径"""
+        path = QFileDialog.getExistingDirectory(self, "选择输出路径")
+        if path:
+            self.output_path_edit.setText(path)
+            
+    def get_config(self):
+        """获取配置"""
+        # 验证输入
+        if not self.name_edit.text().strip():
+            QMessageBox.warning(self, "警告", "请输入配置名称")
+            return None
+            
+        if not self.dataset_path_edit.text().strip():
+            QMessageBox.warning(self, "警告", "请选择数据集路径")
+            return None
+            
+        if not self.output_path_edit.text().strip():
+            QMessageBox.warning(self, "警告", "请选择输出路径")
+            return None
+            
+        # 检查比例之和
+        total_ratio = self.train_ratio_spin.value() + self.val_ratio_spin.value() + self.test_ratio_spin.value()
+        if abs(total_ratio - 1.0) > 1e-6:
+            QMessageBox.warning(self, "警告", "比例之和必须为1.0")
+            return None
+            
+        config = DatasetSplitConfig(
+            name=self.name_edit.text().strip(),
+            dataset_path=self.dataset_path_edit.text().strip(),
+            output_path=self.output_path_edit.text().strip(),
+            train_ratio=self.train_ratio_spin.value(),
+            val_ratio=self.val_ratio_spin.value(),
+            test_ratio=self.test_ratio_spin.value(),
+            generate_script=self.generate_script_check.isChecked(),
+            train_params=self.train_params_edit.toPlainText().strip()
+        )
+        
+        if self.config:
+            config.id = self.config.id
+            
+        return config
+
+
+class DatasetSplitManagementPanel(QWidget):
+    """
+    数据集划分管理面板
+    """
+    
+    # 添加信号：当数据集划分完成时发送输出路径
+    dataset_split_completed = pyqtSignal(str)
+    
+    def __init__(self):
+        super().__init__()
+        self.config_manager = DatasetSplitConfigManager()
+        self.workers = {}  # 存储工作线程
+        self.init_ui()
+        
+    def init_ui(self):
+        """初始化界面"""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+        
+        # 标题
+        title_label = QLabel("数据集划分管理")
+        title_label.setStyleSheet("""
+            QLabel {
+                font-size: 16px;
+                font-weight: bold;
+                padding: 5px;
+                border-bottom: 1px solid #ccc;
+            }
+        """)
+        layout.addWidget(title_label)
+        
+        # 按钮栏
+        button_layout = QHBoxLayout()
+        
+        self.add_btn = QPushButton("➕ 添加配置")
+        self.add_btn.clicked.connect(self.add_config)
+        self.add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        
+        self.refresh_btn = QPushButton("🔄 刷新")
+        self.refresh_btn.clicked.connect(self.refresh_configs)
+        self.refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        
+        button_layout.addWidget(self.add_btn)
+        button_layout.addWidget(self.refresh_btn)
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+        
+        # 配置列表
+        self.config_tree = QTreeWidget()
+        self.config_tree.setHeaderLabels(["配置名称", "数据集路径", "输出路径", "比例(T/V/T)", "操作"])
+        self.config_tree.setRootIsDecorated(False)
+        self.config_tree.setAlternatingRowColors(True)
+        self.config_tree.setStyleSheet("""
+            QTreeWidget {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                background-color: white;
+                alternate-background-color: #f9f9f9;
+            }
+            QTreeWidget::item {
+                padding: 5px;
+            }
+            QTreeWidget::item:selected {
+                background-color: #e3f2fd;
+                color: black;
+            }
+            QHeaderView::section {
+                background-color: #f5f5f5;
+                padding: 5px;
+                border: 1px solid #ddd;
+                font-weight: bold;
+            }
+        """)
+        
+        header = self.config_tree.header()
+        if header:
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+            header.resizeSection(4, 250)
+            
+        layout.addWidget(self.config_tree)
+        
+        # 初始加载配置
+        self.refresh_configs()
+        
+    def refresh_configs(self):
+        """刷新配置列表"""
+        self.config_manager.load_configs()
+        self.config_tree.clear()
+        
+        for config in self.config_manager.get_configs():
+            item = QTreeWidgetItem(self.config_tree)
+            item.setText(0, config.name)
+            item.setText(1, config.dataset_path)
+            item.setText(2, config.output_path)
+            item.setText(3, f"{config.train_ratio}/{config.val_ratio}/{config.test_ratio}")
+            item.setData(0, Qt.UserRole, config.id)
+            
+            # 创建操作按钮
+            button_widget = QWidget()
+            button_layout = QHBoxLayout(button_widget)
+            button_layout.setContentsMargins(0, 0, 0, 0)
+            button_layout.setSpacing(2)
+            
+            # 划分按钮
+            split_btn = QPushButton("划分")
+            split_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    color: white;
+                    border: none;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #45a049;
+                }
+            """)
+            split_btn.clicked.connect(lambda checked, c=config: self.split_dataset(c))
+            
+            # 编辑按钮
+            edit_btn = QPushButton("编辑")
+            edit_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #FF9800;
+                    color: white;
+                    border: none;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #F57C00;
+                }
+            """)
+            edit_btn.clicked.connect(lambda checked, c=config: self.edit_config(c))
+            
+            # 删除按钮
+            delete_btn = QPushButton("删除")
+            delete_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #F44336;
+                    color: white;
+                    border: none;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #D32F2F;
+                }
+            """)
+            delete_btn.clicked.connect(lambda checked, c=config: self.delete_config(c))
+            
+            button_layout.addWidget(split_btn)
+            button_layout.addWidget(edit_btn)
+            button_layout.addWidget(delete_btn)
+            
+            self.config_tree.setItemWidget(item, 4, button_widget)
+            
+        logger.info("刷新数据集划分配置列表")
+        
+    def add_config(self):
+        """添加配置"""
+        dialog = DatasetSplitConfigDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            config = dialog.get_config()
+            if config:
+                self.config_manager.add_config(config)
+                self.refresh_configs()
+                
+    def edit_config(self, config):
+        """编辑配置"""
+        dialog = DatasetSplitConfigDialog(self, config)
+        if dialog.exec() == QDialog.Accepted:
+            updated_config = dialog.get_config()
+            if updated_config:
+                self.config_manager.update_config(updated_config)
+                self.refresh_configs()
+                
+    def delete_config(self, config):
+        """删除配置"""
+        reply = QMessageBox.question(
+            self, "确认", 
+            f"确定要删除配置 '{config.name}' 吗？",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.config_manager.delete_config(config.id)
+            self.refresh_configs()
+            
+    def split_dataset(self, config):
+        """划分数据集"""
+        # 验证路径
+        if not os.path.exists(config.dataset_path):
+            QMessageBox.warning(self, "警告", f"数据集路径不存在: {config.dataset_path}")
+            return
+            
+        # 创建工作线程
+        worker = SplitWorker(
+            config.dataset_path,
+            config.output_path,
+            config.train_ratio,
+            config.val_ratio,
+            config.test_ratio,
+            config.generate_script,
+            config.train_params
+        )
+        worker.split_finished.connect(lambda success, msg: self.on_split_finished(success, msg, config))
+        worker.start()
+        
+        self.workers[config.id] = worker
+        logger.info(f"开始划分数据集: {config.name}")
+        
+    def on_split_finished(self, success, message, config):
+        """划分完成"""
+        if success:
+            QMessageBox.information(self, "成功", message)
+            logger.info(f"数据集划分完成: {config.name}")
+            
+            # 发送信号（直接使用输出路径）
+            if os.path.exists(config.output_path):
+                self.dataset_split_completed.emit(config.output_path)
+        else:
+            QMessageBox.critical(self, "错误", message)
+            logger.error(f"数据集划分失败: {message}")
+            
+        # 清理工作线程
+        if config.id in self.workers:
+            del self.workers[config.id]

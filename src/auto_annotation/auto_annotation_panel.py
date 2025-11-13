@@ -659,12 +659,13 @@ class AutoAnnotationPanel(QWidget):
 
         # 创建任务列表
         self.task_tree = QTreeWidget()
-        # 更新表头，添加处理数据和异常信息列
-        self.task_tree.setHeaderLabels(["任务ID", "模型", "数据集路径", "状态", "进度", "处理数据", "异常信息"])
+        # 更新表头，添加操作列
+        self.task_tree.setHeaderLabels(["任务ID", "模型", "数据集路径", "状态", "进度", "处理数据", "异常信息", "操作"])
         self.task_tree.setRootIsDecorated(False)
         self.task_tree.setAlternatingRowColors(True)
-        self.task_tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.task_tree.customContextMenuRequested.connect(self.show_context_menu)
+        # 移除右键菜单
+        # self.task_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        # self.task_tree.customContextMenuRequested.connect(self.show_context_menu)
         self.task_tree.setStyleSheet("""
             QTreeWidget {
                 border: 1px solid #ccc;
@@ -726,6 +727,9 @@ class AutoAnnotationPanel(QWidget):
             item.setText(6, getattr(task, 'error_message', ''))
 
             item.setData(0, Qt.UserRole, task.id)
+            
+            # 添加操作按钮
+            self.add_action_buttons(item, task.id, task.status)
 
         logger.info("刷新自动标注任务列表")
 
@@ -969,35 +973,76 @@ class AutoAnnotationPanel(QWidget):
             except Exception as e:
                 logger.error(f"处理错误日志消息时出错: {e}")
 
-    def show_context_menu(self, position):
+    def add_action_buttons(self, item, task_id, task_status):
         """
-        显示右键菜单
+        为指定项添加操作按钮
+        
+        Args:
+            item: 树形控件项
+            task_id: 任务ID
+            task_status: 任务状态
         """
-        item = self.task_tree.itemAt(position)
-        if not item:
-            return
-
-        task_id = int(item.data(0, Qt.UserRole))
-
-        # 获取任务状态
-        task_status = item.text(3)
-
-        from PyQt5.QtWidgets import QMenu, QAction
-        menu = QMenu(self)
-
-        # 根据任务状态添加操作
+        # 创建按钮容器
+        button_widget = QWidget()
+        button_layout = QHBoxLayout(button_widget)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(2)
+        
+        # 根据任务状态添加开始/停止按钮
         if task_status in ["未开始", "已停止", "错误"]:
-            start_action = QAction("▶ 开始", self)
-            start_action.triggered.connect(lambda: self.start_task(task_id))
-            menu.addAction(start_action)
+            # 开始按钮
+            start_btn = QPushButton("开始")
+            start_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    color: white;
+                    border: none;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #45a049;
+                }
+            """)
+            start_btn.clicked.connect(lambda: self.start_task(task_id))
+            button_layout.addWidget(start_btn)
         elif task_status == "进行中":
-            stop_action = QAction("⏹ 停止", self)
-            stop_action.triggered.connect(lambda: self.stop_task(task_id))
-            menu.addAction(stop_action)
-
-        # 添加删除操作
-        delete_action = QAction("🗑️ 删除", self)
-        delete_action.triggered.connect(lambda: self.delete_task(task_id))
-        menu.addAction(delete_action)
-
-        menu.exec_(self.task_tree.viewport().mapToGlobal(position))
+            # 停止按钮
+            stop_btn = QPushButton("停止")
+            stop_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #FF9800;
+                    color: white;
+                    border: none;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #F57C00;
+                }
+            """)
+            stop_btn.clicked.connect(lambda: self.stop_task(task_id))
+            button_layout.addWidget(stop_btn)
+        
+        # 删除按钮
+        delete_btn = QPushButton("删除")
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #F44336;
+                color: white;
+                border: none;
+                padding: 2px 8px;
+                border-radius: 3px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #D32F2F;
+            }
+        """)
+        delete_btn.clicked.connect(lambda: self.delete_task(task_id))
+        button_layout.addWidget(delete_btn)
+        
+        # 将按钮容器设置为项的第8列（操作列）
+        self.task_tree.setItemWidget(item, 7, button_widget)

@@ -476,11 +476,12 @@ class ModelConfigPanel(QWidget):
 
         # 创建模型配置列表
         self.model_config_tree = QTreeWidget()
-        self.model_config_tree.setHeaderLabels(["模型名称", "标注类型", "详细信息"])
+        self.model_config_tree.setHeaderLabels(["模型名称", "标注类型", "详细信息", "操作"])
         self.model_config_tree.setRootIsDecorated(False)
         self.model_config_tree.setAlternatingRowColors(True)
-        self.model_config_tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.model_config_tree.customContextMenuRequested.connect(self.show_context_menu)
+        # 移除右键菜单和双击事件
+        # self.model_config_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        # self.model_config_tree.customContextMenuRequested.connect(self.show_context_menu)
         self.model_config_tree.setStyleSheet("""
             QTreeWidget {
                 border: 1px solid #ccc;
@@ -535,6 +536,9 @@ class ModelConfigPanel(QWidget):
 
             item.setText(2, detail)
             item.setData(0, Qt.UserRole, mc.id)
+            
+            # 添加操作按钮
+            self.add_action_buttons(item, mc.id)
 
         logger.info("刷新模型配置列表")
 
@@ -579,27 +583,56 @@ class ModelConfigPanel(QWidget):
             self.manager.delete_model_config(model_config_id)
             self.refresh_model_configs()
 
-    def show_context_menu(self, position):
+    def add_action_buttons(self, item, model_config_id):
         """
-        显示右键菜单
+        为指定项添加操作按钮
+        
+        Args:
+            item: 树形控件项
+            model_config_id: 模型配置ID
         """
-        item = self.model_config_tree.itemAt(position)
-        if not item:
-            return
-
-        model_config_id = item.data(0, Qt.UserRole)
-
-        from PyQt5.QtWidgets import QMenu, QAction
-        menu = QMenu(self)
-
-        # 添加编辑操作
-        edit_action = QAction("✏️ 编辑", self)
-        edit_action.triggered.connect(lambda: self.update_model_config(model_config_id))
-        menu.addAction(edit_action)
-
-        # 添加删除操作
-        delete_action = QAction("🗑️ 删除", self)
-        delete_action.triggered.connect(lambda: self.delete_model_config(model_config_id))
-        menu.addAction(delete_action)
-
-        menu.exec_(self.model_config_tree.viewport().mapToGlobal(position))
+        # 创建按钮容器
+        button_widget = QWidget()
+        button_layout = QHBoxLayout(button_widget)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(2)
+        
+        # 编辑按钮
+        edit_btn = QPushButton("编辑")
+        edit_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #FF9800;
+                color: white;
+                border: none;
+                padding: 2px 8px;
+                border-radius: 3px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #F57C00;
+            }
+        """)
+        edit_btn.clicked.connect(lambda: self.update_model_config(model_config_id))
+        
+        # 删除按钮
+        delete_btn = QPushButton("删除")
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #F44336;
+                color: white;
+                border: none;
+                padding: 2px 8px;
+                border-radius: 3px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #D32F2F;
+            }
+        """)
+        delete_btn.clicked.connect(lambda: self.delete_model_config(model_config_id))
+        
+        button_layout.addWidget(edit_btn)
+        button_layout.addWidget(delete_btn)
+        
+        # 将按钮容器设置为项的第4列（操作列）
+        self.model_config_tree.setItemWidget(item, 3, button_widget)

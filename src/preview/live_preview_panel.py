@@ -2,7 +2,7 @@ import os
 import cv2
 import numpy as np
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QLabel, QSizePolicy, \
-    QSplitter, QListWidget, QListWidgetItem, QMessageBox, QFileDialog, QSlider, QGraphicsView, QGraphicsScene
+    QSplitter, QListWidget, QListWidgetItem, QMessageBox, QFileDialog, QSlider, QGraphicsView, QGraphicsScene, QInputDialog
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSizeF, QThread, QRectF
 from PyQt5.QtGui import QPixmap, QImage, QIcon
 from ..data_source.data_source_panel import DataSource
@@ -92,6 +92,11 @@ class LivePreviewPanel(QWidget):
 
         # 截图相关
         self.captured_frames = []
+        
+        # 自动抽帧相关
+        self.auto_capture_interval = 5  # 默认5秒自动抽帧
+        self.auto_capture_timer = QTimer()
+        self.auto_capture_timer.timeout.connect(self.capture_frame)
 
         # 定时器用于更新显示
         self.display_timer = QTimer()
@@ -136,8 +141,7 @@ class LivePreviewPanel(QWidget):
         self.toolbar.setSpacing(5)
         self.toolbar.setContentsMargins(5, 5, 5, 5)  # 添加边距，避免按钮紧贴边框
 
-        # 添加快捷键说明标签到工具栏
-        self.toolbar.addWidget(self.shortcut_label)
+        # 添加工具栏伸缩空间
         self.toolbar.addStretch()
 
         # 添加工具栏到视频布局
@@ -157,6 +161,21 @@ class LivePreviewPanel(QWidget):
         self.video_view.setAlignment(Qt.AlignCenter)
         
         video_layout.addWidget(self.video_view)
+
+        # 创建快捷键说明标签（在video_view创建之后）
+        self.shortcut_label = QLabel("快捷键: 空格=播放/暂停 | W=截图 | A/D=切换资源 | F11=全屏 | Delete=删除")
+        self.shortcut_label.setStyleSheet("""
+            QLabel {
+                background-color: rgba(0, 0, 0, 128);
+                color: white;
+                padding: 5px 10px;
+                border-radius: 3px;
+                font-size: 12px;
+            }
+        """)
+        self.shortcut_label.setParent(self.video_view)
+        self.shortcut_label.move(10, 10)
+        self.shortcut_label.show()  # 确保标签可见
 
         # 创建控制按钮容器，放置在视频下方
         self.control_container = QWidget()
@@ -200,9 +219,15 @@ class LivePreviewPanel(QWidget):
         self.record_btn.setStyleSheet("QPushButton { color: white; border: none; padding: 5px; }")
 
         # 截图按钮
-        self.capture_btn = QPushButton("📸 截图")
+        self.capture_btn = QPushButton("📸 抽帧")
         self.capture_btn.clicked.connect(self.capture_frame)
         self.capture_btn.setStyleSheet("QPushButton { color: white; border: none; padding: 5px; }")
+        
+        # 自动抽帧按钮
+        self.auto_capture_btn = QPushButton("🔁 自动抽帧")
+        self.auto_capture_btn.setCheckable(True)
+        self.auto_capture_btn.clicked.connect(self.toggle_auto_capture)
+        self.auto_capture_btn.setStyleSheet("QPushButton { color: white; border: none; padding: 5px; }")
 
         # 添加时间滑块和标签（虽然直播没有时间，但为了保持一致性）
         self.time_slider = QSlider(Qt.Horizontal)
@@ -237,6 +262,7 @@ class LivePreviewPanel(QWidget):
         control_layout.addWidget(self.forward_btn)
         control_layout.addWidget(self.record_btn)
         control_layout.addWidget(self.capture_btn)
+        control_layout.addWidget(self.auto_capture_btn)
         control_layout.addWidget(self.time_slider)
         control_layout.addWidget(self.time_label)
 
@@ -255,8 +281,25 @@ class LivePreviewPanel(QWidget):
         self.media_list_widget.setSpacing(5)
         self.media_list_widget.setMovement(QListWidget.Static)
 
-        media_layout.addWidget(QLabel("录制视频和截图:"))
+        media_layout.addWidget(QLabel("录制视频和抽帧图片:"))
         media_layout.addWidget(self.media_list_widget)
+        
+        # 添加删除按钮
+        delete_btn = QPushButton("🗑️ 删除选中")
+        delete_btn.clicked.connect(self.delete_selected_media)
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                border: none;
+                padding: 5px 10px;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+        """)
+        media_layout.addWidget(delete_btn)
 
         self.main_splitter.addWidget(self.video_container)
         self.main_splitter.addWidget(self.media_list)
@@ -297,9 +340,10 @@ class LivePreviewPanel(QWidget):
         """
         更新快捷键提示标签位置，使其始终位于视频显示区域的左上角
         """
-        if self.shortcut_label:
+        if hasattr(self, 'shortcut_label') and self.shortcut_label:
             # 将提示标签位置设置为视频左上角偏移10像素
             self.shortcut_label.move(10, 10)
+            self.shortcut_label.raise_()  # 确保标签显示在最上层
 
     def set_media(self, stream_url):
         """
@@ -423,25 +467,59 @@ class LivePreviewPanel(QWidget):
         """
         停止播放直播流
         """
-        # 停止录制（如果正在进行）
-        if self.is_recording:
-            self.toggle_record()
+        try:
+            logger.info("开始停止直播播放...")
             
-        # 停止捕获线程
-        if self.capture_thread and self.capture_thread.isRunning():
-            self.capture_thread.stop_capture()
-            self.capture_thread.quit()
-            self.capture_thread.wait()
+            # 1. 先停止自动抽帧（如果正在进行）
+            if self.auto_capture_timer and self.auto_capture_timer.isActive():
+                self.auto_capture_timer.stop()
+                self.auto_capture_btn.setChecked(False)
+                self.auto_capture_btn.setText("🔁 自动抽帧")
+                logger.info("已停止自动抽帧")
             
-        # 清除当前帧
-        self.current_frame = None
-        self.scene.clear()
-        stop_label = QLabel("直播已停止")
-        stop_label.setAlignment(Qt.AlignCenter)
-        stop_label.setStyleSheet("QLabel { color: white; font-weight: bold; }")
-        self.scene.addWidget(stop_label)
-        
-        logger.info("停止直播播放")
+            # 2. 停止录制（如果正在进行）
+            if self.is_recording:
+                self.record_btn.setChecked(False)
+                self.stop_recording()
+                logger.info("已停止录制")
+            
+            # 3. 清除当前帧（在停止线程之前，防止update_display继续处理）
+            self.current_frame = None
+            logger.info("已清除当前帧")
+            
+            # 4. 停止捕获线程
+            if self.capture_thread and self.capture_thread.isRunning():
+                logger.info("正在停止捕获线程...")
+                self.capture_thread.stop_capture()
+                self.capture_thread.quit()
+                # 等待线程结束，但设置超时防止无限等待
+                if not self.capture_thread.wait(3000):  # 等待最多3秒
+                    logger.warning("捕获线程未能在3秒内停止")
+                    self.capture_thread.terminate()  # 强制终止
+                    self.capture_thread.wait(1000)  # 再等1秒
+                logger.info("捕获线程已停止")
+            
+            # 5. 清空场景并显示停止标签
+            self.scene.clear()
+            stop_label = QLabel("直播已停止")
+            stop_label.setAlignment(Qt.AlignCenter)
+            stop_label.setStyleSheet("QLabel { color: white; font-weight: bold; font-size: 16px; }")
+            self.scene.addWidget(stop_label)
+            
+            # 6. 更新按钮状态
+            self.play_btn.setText("▶ 播放")
+            
+            logger.info("直播播放已完全停止")
+        except Exception as e:
+            logger.error(f"停止直播流时出错: {e}", exc_info=True)
+            # 即使出错也要确保清理资源
+            try:
+                self.current_frame = None
+                if self.capture_thread and self.capture_thread.isRunning():
+                    self.capture_thread.terminate()
+                    self.capture_thread.wait(1000)
+            except Exception as cleanup_error:
+                logger.error(f"清理资源时出错: {cleanup_error}")
 
     def fast_forward(self):
         """
@@ -534,29 +612,56 @@ class LivePreviewPanel(QWidget):
             QMessageBox.warning(self, "警告", "未设置文件保存路径!")
             return
 
+        # 如果保存路径不存在，自动创建
         if not os.path.exists(self.data_source.save_path):
-            QMessageBox.warning(self, "警告", "文件保存路径不存在!")
-            return
+            try:
+                os.makedirs(self.data_source.save_path, exist_ok=True)
+                logger.info(f"创建保存路径: {self.data_source.save_path}")
+            except Exception as e:
+                logger.error(f"创建保存路径失败: {e}")
+                QMessageBox.critical(self, "错误", f"创建保存路径失败: {e}")
+                return
 
         if self.current_frame is None:
-            QMessageBox.warning(self, "警告", "当前没有可截图的帧!")
+            QMessageBox.warning(self, "警告", "当前没有可抽帧的画面!")
             return
 
         try:
-            # 生成截图文件名
+            # 生成抽帧文件名
             import time
             timestamp = time.strftime("%Y%m%d_%H%M%S")
-            frame_path = os.path.join(self.data_source.save_path, f"snapshot_{timestamp}.jpg")
+            frame_path = os.path.join(self.data_source.save_path, f"frame_{timestamp}.jpg")
 
             # 保存当前帧为图片
             cv2.imwrite(frame_path, self.current_frame)
-            logger.info(f"截图已保存: {frame_path}")
+            logger.info(f"抽帧已保存: {frame_path}")
 
             # 添加到媒体列表
             self.add_media_to_list(frame_path)
         except Exception as e:
-            logger.error(f"截图时出错: {e}")
-            QMessageBox.critical(self, "错误", f"截图时出错: {e}")
+            logger.error(f"抽帧时出错: {e}")
+            QMessageBox.critical(self, "错误", f"抽帧时出错: {e}")
+    
+    def toggle_auto_capture(self):
+        """
+        切换自动抽帧状态
+        """
+        if self.auto_capture_btn.isChecked():
+            # 获取抽帧间隔
+            interval, ok = QInputDialog.getInt(self, "自动抽帧设置", "请输入抽帧间隔(秒):", self.auto_capture_interval, 1, 3600)
+            if ok:
+                self.auto_capture_interval = interval
+                # 启动自动抽帧定时器
+                self.auto_capture_timer.start(self.auto_capture_interval * 1000)  # 转换为毫秒
+                self.auto_capture_btn.setText("⏹ 停止自动抽帧")
+                logger.info(f"启动自动抽帧，间隔: {self.auto_capture_interval}秒")
+            else:
+                self.auto_capture_btn.setChecked(False)
+        else:
+            # 停止自动抽帧
+            self.auto_capture_timer.stop()
+            self.auto_capture_btn.setText("🔁 自动抽帧")
+            logger.info("停止自动抽帧")
 
     def add_media_to_list(self, media_path):
         """
@@ -571,14 +676,20 @@ class LivePreviewPanel(QWidget):
 
         # 设置图标（根据文件类型）
         if media_path.lower().endswith(('.mp4', '.avi', '.mov')):
-            # 视频文件图标
-            icon = QIcon(":/icons/video.png")  # 需要实际的图标资源
+            # 视频文件，提取第一帧作为缩略图
+            pixmap = self.extract_video_thumbnail(media_path)
+            if pixmap and not pixmap.isNull():
+                pixmap = pixmap.scaled(120, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                icon = QIcon(pixmap)
+            else:
+                # 如果提取失败，创建默认视频图标
+                icon = self.create_default_video_icon()
         else:
             # 图片文件，加载缩略图
             pixmap = QPixmap(media_path)
             if pixmap.isNull():
-                # 如果无法加载图像，使用默认图标
-                icon = QIcon(":/icons/image.png")  # 需要实际的图标资源
+                # 如果无法加载图像，创建默认图片图标
+                icon = self.create_default_image_icon()
             else:
                 # 缩放图像以适应显示
                 pixmap = pixmap.scaled(120, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -593,6 +704,101 @@ class LivePreviewPanel(QWidget):
         # 添加到列表
         self.media_list_widget.addItem(item)
         self.captured_frames.append(media_path)
+
+    def extract_video_thumbnail(self, video_path):
+        """
+        从视频中提取第一帧作为缩略图
+
+        Args:
+            video_path (str): 视频文件路径
+
+        Returns:
+            QPixmap: 缩略图，如果提取失败返回None
+        """
+        try:
+            # 使用OpenCV打开视频
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                logger.warning(f"无法打开视频文件: {video_path}")
+                return None
+
+            # 读取第一帧
+            ret, frame = cap.read()
+            cap.release()
+
+            if not ret or frame is None:
+                logger.warning(f"无法读取视频第一帧: {video_path}")
+                return None
+
+            # 转换BGR到RGB
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            h, w, ch = rgb_frame.shape
+            bytes_per_line = ch * w
+
+            # 创建QImage
+            q_img = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
+            # 转换为QPixmap
+            pixmap = QPixmap.fromImage(q_img.copy())
+
+            return pixmap
+        except Exception as e:
+            logger.error(f"提取视频缩略图时出错: {video_path}, 错误: {e}")
+            return None
+
+    def create_default_video_icon(self):
+        """
+        创建默认的视频图标
+
+        Returns:
+            QIcon: 默认视频图标
+        """
+        # 创建一个带有播放符号的默认图标
+        pixmap = QPixmap(120, 90)
+        pixmap.fill(Qt.darkGray)
+        
+        from PyQt5.QtGui import QPainter, QPen, QBrush, QPolygon
+        from PyQt5.QtCore import QPoint
+        
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # 绘制播放三角形
+        painter.setPen(QPen(Qt.white, 2))
+        painter.setBrush(QBrush(Qt.white))
+        
+        # 三角形的三个顶点
+        points = [
+            QPoint(40, 25),
+            QPoint(40, 65),
+            QPoint(80, 45)
+        ]
+        polygon = QPolygon(points)
+        painter.drawPolygon(polygon)
+        
+        painter.end()
+        
+        return QIcon(pixmap)
+
+    def create_default_image_icon(self):
+        """
+        创建默认的图片图标
+
+        Returns:
+            QIcon: 默认图片图标
+        """
+        # 创建一个简单的默认图标
+        pixmap = QPixmap(120, 90)
+        pixmap.fill(Qt.lightGray)
+        
+        from PyQt5.QtGui import QPainter, QPen
+        
+        painter = QPainter(pixmap)
+        painter.setPen(QPen(Qt.gray, 2))
+        painter.drawRect(10, 10, 100, 70)
+        painter.drawText(pixmap.rect(), Qt.AlignCenter, "图片")
+        painter.end()
+        
+        return QIcon(pixmap)
 
     def load_existing_media(self):
         """
@@ -710,6 +916,10 @@ class LivePreviewPanel(QWidget):
         Args:
             event: 关闭事件
         """
+        # 停止自动截图（如果正在进行）
+        if self.auto_capture_timer.isActive():
+            self.auto_capture_timer.stop()
+        
         # 停止录制（如果正在进行）
         if self.is_recording:
             self.stop_recording()

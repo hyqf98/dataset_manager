@@ -159,6 +159,7 @@ class FileTransferWorker(QThread):
     transfer_skipped = pyqtSignal(str)  # 跳过的文件名
     file_exists_check = pyqtSignal(str, str)  # 文件名, 远程路径 - 需要用户确认
     all_completed = pyqtSignal()  # 所有传输完成
+    folder_progress_updated = pyqtSignal(str, int, int)  # 文件夹名, 已完成文件数, 总文件数
     
     def __init__(self, server_config: ServerConfig, transfer_type: str, 
                  local_paths: List[str], remote_path: str, parent=None):
@@ -170,6 +171,8 @@ class FileTransferWorker(QThread):
         self.ssh_client = None
         self.overwrite_policy = FileOverwritePolicy.ASK
         self.pending_file = None  # 待处理的文件信息
+        # 用于跟踪文件夹进度的字典
+        self.folder_file_counts = {}  # {folder_name: (completed, total)}
         
     def run(self):
         """
@@ -181,7 +184,7 @@ class FileTransferWorker(QThread):
             
             # 连接信号
             self.ssh_client.progress_updated.connect(self.progress_updated.emit)
-            self.ssh_client.transfer_completed.connect(self.transfer_completed.emit)
+            self.ssh_client.transfer_completed.connect(self.on_file_transfer_completed)
             self.ssh_client.transfer_error.connect(self.transfer_error.emit)
             
             # 连接到服务器
@@ -214,10 +217,41 @@ class FileTransferWorker(QThread):
         if self.ssh_client:
             self.ssh_client.set_overwrite_policy(policy)
     
+    def on_file_transfer_completed(self, filename):
+        """
+        处理单个文件传输完成，更新文件夹进度
+        """
+        # 更新文件夹进度
+        for folder_name, (completed, total) in self.folder_file_counts.items():
+            self.folder_file_counts[folder_name] = (completed + 1, total)
+            self.folder_progress_updated.emit(folder_name, completed + 1, total)
+        
+        # 发出原始完成信号
+        self.transfer_completed.emit(filename)
+    
+    def _count_files_in_directory(self, directory_path):
+        """
+        计算目录中的文件总数（不包括子目录）
+        """
+        count = 0
+        try:
+            for root, dirs, files in os.walk(directory_path):
+                count += len(files)
+        except Exception as e:
+            logger.error(f"计算目录文件数时出错: {str(e)}")
+        return count
+    
     def _upload_files(self):
         """
         上传文件
         """
+        # 首先计算所有文件夹中的文件总数
+        for local_path in self.local_paths:
+            if os.path.isdir(local_path):
+                folder_name = os.path.basename(local_path)
+                file_count = self._count_files_in_directory(local_path)
+                self.folder_file_counts[folder_name] = (0, file_count)
+        
         for local_path in self.local_paths:
             try:
                 if os.path.isfile(local_path):
@@ -727,12 +761,17 @@ class RemoteBrowserDialog(QDialog):
             filename = item.text(0)
             is_directory = item.data(0, Qt.ItemDataRole.UserRole)
             
-            # 如果选中的是目录，则返回该目录的完整路径
-            if is_directory and filename != "..":
-                if self.current_path == "/":
-                    return f"/{filename}"
-                else:
-                    return f"{self.current_path}/{filename}"
+            # 如果选中的是".."，返回当前目录
+            if filename == "..":
+                return self.current_path
+            
+            # 构建完整路径（无论是文件还是目录）
+            if self.current_path == "/":
+                full_path = f"/{filename}"
+            else:
+                full_path = f"{self.current_path}/{filename}"
+            
+            return full_path
         
         # 默认返回当前目录路径
         return self.current_path
@@ -749,6 +788,8 @@ class FileTransferDialog(QDialog):
         self.transfer_type = transfer_type  # "upload" 或 "下载"
         self.worker = None
         self.transfer_items = []  # 传输项目列表
+        # 用于跟踪文件夹进度的字典
+        self.folder_progress = {}  # {folder_name: (completed, total)}
         
         self.setWindowTitle("上传文件" if transfer_type == "upload" else "下载文件")
         self.setModal(True)
@@ -959,6 +1000,8 @@ class FileTransferDialog(QDialog):
                     # 计算文件夹大小
                     folder_size = self._calculate_folder_size(path)
                     item.setText(1, self.format_file_size(folder_size))
+                    # 为文件夹添加特殊标识
+                    item.setData(1, Qt.ItemDataRole.UserRole, "folder")
                 else:
                     item.setText(1, "未知")
             except Exception as e:
@@ -1128,6 +1171,7 @@ class FileTransferDialog(QDialog):
         self.worker.transfer_skipped.connect(self.on_transfer_skipped)
         self.worker.file_exists_check.connect(self.on_file_exists_check)
         self.worker.all_completed.connect(self.on_all_completed)
+        self.worker.folder_progress_updated.connect(self.update_folder_progress)  # 连接文件夹进度信号
         
         # 禁用开始按钮，显示进度条
         self.start_btn.setEnabled(False)
@@ -1151,6 +1195,17 @@ class FileTransferDialog(QDialog):
                 
         # 更新总体进度条
         self.progress_bar.setValue(progress)
+    
+    def update_folder_progress(self, folder_name, completed, total):
+        """
+        更新文件夹传输进度
+        """
+        # 在文件树中找到对应的文件夹项目并更新进度
+        for i in range(self.file_tree.topLevelItemCount()):
+            item = self.file_tree.topLevelItem(i)
+            if item and item.text(0) == folder_name and item.data(1, Qt.ItemDataRole.UserRole) == "folder":
+                item.setText(2, f"{completed}/{total}")
+                break
     
     def on_transfer_completed(self, filename):
         """

@@ -299,11 +299,12 @@ class DataSourcePanel(QWidget):
 
         # 创建数据源列表
         self.data_source_tree = QTreeWidget()
-        self.data_source_tree.setHeaderLabels(["名称", "类型", "直播源地址", "保存路径"])
+        self.data_source_tree.setHeaderLabels(["名称", "类型", "直播源地址", "保存路径", "操作"])
         self.data_source_tree.setRootIsDecorated(False)
         self.data_source_tree.setAlternatingRowColors(True)
-        self.data_source_tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.data_source_tree.customContextMenuRequested.connect(self.show_context_menu)
+        # 移除右键菜单
+        # self.data_source_tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        # self.data_source_tree.customContextMenuRequested.connect(self.show_context_menu)
         self.data_source_tree.setStyleSheet("""
             QTreeWidget {
                 border: 1px solid #ccc;
@@ -326,8 +327,8 @@ class DataSourcePanel(QWidget):
             }
         """)
 
-        # 连接双击事件
-        self.data_source_tree.itemDoubleClicked.connect(self.play_data_source)
+        # 移除双击播放事件（改用操作按钮）
+        # self.data_source_tree.itemDoubleClicked.connect(self.play_data_source)
 
         # 添加控件到布局
         layout.addWidget(title_label)
@@ -351,6 +352,71 @@ class DataSourcePanel(QWidget):
             item.setText(2, ds.stream_url)
             item.setText(3, ds.save_path)
             item.setData(0, Qt.UserRole, ds.id)
+            
+            # 创建操作按钮容器
+            button_widget = QWidget()
+            button_layout = QHBoxLayout(button_widget)
+            button_layout.setContentsMargins(0, 0, 0, 0)
+            button_layout.setSpacing(2)
+            
+            # 播放按钮
+            play_btn = QPushButton("播放")
+            play_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    color: white;
+                    border: none;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #45a049;
+                }
+            """)
+            play_btn.clicked.connect(lambda checked, ds_id=ds.id: self.play_data_source_by_id(ds_id))
+            
+            # 编辑按钮
+            edit_btn = QPushButton("编辑")
+            edit_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #FF9800;
+                    color: white;
+                    border: none;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #F57C00;
+                }
+            """)
+            edit_btn.clicked.connect(lambda checked, ds_id=ds.id: self.update_data_source(ds_id))
+            
+            # 删除按钮
+            delete_btn = QPushButton("删除")
+            delete_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #F44336;
+                    color: white;
+                    border: none;
+                    padding: 2px 8px;
+                    border-radius: 3px;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #D32F2F;
+                }
+            """)
+            delete_btn.clicked.connect(lambda checked, ds_id=ds.id: self.delete_data_source(ds_id))
+            
+            # 添加按钮到布局
+            button_layout.addWidget(play_btn)
+            button_layout.addWidget(edit_btn)
+            button_layout.addWidget(delete_btn)
+            
+            # 将按钮容器设置到操作列
+            self.data_source_tree.setItemWidget(item, 4, button_widget)
 
         logger.info("刷新数据源列表")
 
@@ -395,35 +461,19 @@ class DataSourcePanel(QWidget):
             self.manager.delete_data_source(data_source_id)
             self.refresh_data_sources()
 
-    def show_context_menu(self, position):
+    def play_data_source_by_id(self, data_source_id):
         """
-        显示右键菜单
+        根据数据源ID播放数据源
         """
-        item = self.data_source_tree.itemAt(position)
-        if not item:
-            return
-
-        data_source_id = item.data(0, Qt.UserRole)
-
-        from PyQt5.QtWidgets import QMenu, QAction
-        menu = QMenu(self)
-
-        # 添加播放操作（仅对直播源有效）
-        play_action = QAction("▶ 播放", self)
-        play_action.triggered.connect(lambda: self.play_data_source(item))
-        menu.addAction(play_action)
-
-        # 添加编辑操作
-        edit_action = QAction("✏️ 编辑", self)
-        edit_action.triggered.connect(lambda: self.update_data_source(data_source_id))
-        menu.addAction(edit_action)
-
-        # 添加删除操作
-        delete_action = QAction("🗑️ 删除", self)
-        delete_action.triggered.connect(lambda: self.delete_data_source(data_source_id))
-        menu.addAction(delete_action)
-
-        menu.exec_(self.data_source_tree.viewport().mapToGlobal(position))
+        # 查找对应的数据源
+        for ds in self.manager.get_data_sources():
+            if ds.id == data_source_id:
+                # 发出播放信号
+                self.play_requested.emit(ds)
+                # 关闭数据源管理面板对话框
+                if self.dialog_parent and isinstance(self.dialog_parent, QDialog):
+                    self.dialog_parent.accept()
+                break
 
     def play_data_source(self, item, column=None):
         """

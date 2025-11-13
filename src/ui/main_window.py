@@ -12,13 +12,16 @@ from ..data_source.data_source_panel import DataSourcePanel
 from ..preview.live_preview_panel import LivePreviewPanel
 from ..auto_annotation.model_config_panel import ModelConfigPanel
 from ..auto_annotation.auto_annotation_panel import AutoAnnotationPanel
-from ..dataset_split.dataset_split_panel import DatasetSplitPanel
+from ..dataset_split.dataset_split_panel import DatasetSplitManagementPanel
 
 # 添加远程服务器相关导入
 from ..remote_server.server_config_panel import ServerConfigPanel
 from ..remote_server.file_transfer_dialog import FileTransferDialog
 from ..remote_server.server_config import ServerConfigManager, ServerConfig
 from ..remote_server.remote_file_browser_panel import RemoteFileBrowserPanel
+
+# 添加日志分析面板导入
+from ..auto_annotation.log_analysis_panel import LogAnalysisPanel
 
 class MainWindow(QMainWindow):
     """
@@ -212,11 +215,14 @@ class MainWindow(QMainWindow):
                 # 数据集划分菜单
                 dataset_split_menu = menubar.addMenu('模型训练')
                 if dataset_split_menu:
-                    dataset_split_action = QAction('数据集划分', self)
+                    dataset_split_action = QAction('数据集划分管理', self)
                     dataset_split_action.triggered.connect(self.open_dataset_split_panel)
                     dataset_split_menu.addAction(dataset_split_action)
                     
-                    
+                    # 添加日志分析菜单项
+                    log_analysis_action = QAction('日志分析', self)
+                    log_analysis_action.triggered.connect(self.open_log_analysis_panel)
+                    dataset_split_menu.addAction(log_analysis_action)
 
                 # 文件上传菜单
                 file_upload_menu = menubar.addMenu('远程服务器管理')
@@ -231,13 +237,7 @@ class MainWindow(QMainWindow):
                     file_upload_menu.addAction(remote_browser_action)
                     # 移除上传和下载菜单项
 
-                # 视图菜单
-                view_menu = menubar.addMenu('视图')
-                if view_menu:
-                    fullscreen_action = QAction('全屏模式', self)
-                    fullscreen_action.setShortcut('F11')
-                    fullscreen_action.triggered.connect(self.toggle_fullscreen_mode)
-                    view_menu.addAction(fullscreen_action)
+                # 注意：已移除视图菜单
         except Exception as e:
             logger.error(f"创建菜单栏时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -649,17 +649,17 @@ class MainWindow(QMainWindow):
         """
         try:
             # 每次都创建新的实例，避免使用已销毁的对象
-            self.dataset_split_panel = DatasetSplitPanel()
+            self.dataset_split_panel = DatasetSplitManagementPanel()
             
             # 连接数据集划分完成信号
             self.dataset_split_panel.dataset_split_completed.connect(self.on_dataset_split_completed)
             
             # 创建对话框并显示面板
             dialog = QDialog(self)
-            dialog.setWindowTitle("模型训练")
+            dialog.setWindowTitle("数据集划分管理")
             layout = QHBoxLayout(dialog)
             layout.addWidget(self.dataset_split_panel)
-            dialog.resize(600, 400)
+            dialog.resize(1000, 600)
             dialog.exec()
             
             # 断开信号连接并清理引用，避免访问已销毁的对象
@@ -691,7 +691,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"导入划分后的数据集时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
-
 
     
     def open_server_config_panel(self):
@@ -741,6 +740,30 @@ class MainWindow(QMainWindow):
             logger.error(f"打开远程文件浏览器时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"打开远程文件浏览器时发生异常: {str(e)}")
+
+    def open_log_analysis_panel(self):
+        """
+        打开日志分析面板
+        """
+        try:
+            # 每次都创建新的实例，避免使用已销毁的对象
+            self.log_analysis_panel = LogAnalysisPanel()
+            
+            # 创建对话框并显示面板
+            dialog = QDialog(self)
+            dialog.setWindowTitle("日志分析")
+            layout = QHBoxLayout(dialog)
+            layout.addWidget(self.log_analysis_panel)
+            dialog.resize(1000, 700)
+            dialog.exec()
+            
+            # 清理引用，避免访问已销毁的对象
+            if hasattr(self, 'log_analysis_panel'):
+                delattr(self, 'log_analysis_panel')
+        except Exception as e:
+            logger.error(f"打开日志分析面板时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"打开日志分析面板时发生异常: {str(e)}")
 
     def eventFilter(self, a0, a1):  # type: ignore
         """
@@ -817,23 +840,3 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"窗口显示事件处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
