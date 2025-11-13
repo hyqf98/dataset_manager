@@ -121,13 +121,58 @@ class TrainingLogViewer(QDialog):
     
     def load_local_log(self):
         """加载本地日志"""
-        # 查找results.csv文件
-        results_file = self.find_results_file(self.task.dataset_path)
+        # 根据任务类型和保存路径查找results.csv文件
+        results_file = self.find_local_results_file()
         
         if results_file and os.path.exists(results_file):
             self.parse_and_plot_results(results_file)
         else:
             self.log_text.setPlainText("未找到训练结果文件 results.csv")
+    
+    def find_local_results_file(self) -> Optional[str]:
+        """根据任务保存路径查找本地results.csv文件"""
+        try:
+            # 获取保存路径
+            save_path = self.task.save_path if self.task.task_type == TrainingTaskType.LOCAL else self.task.dataset_path
+            
+            if not save_path:
+                logger.warning("任务保存路径为空")
+                return None
+            
+            # 构建可能的results.csv路径
+            possible_paths = [
+                os.path.join(save_path, "runs", "detect", "train", "results.csv"),
+                os.path.join(save_path, "runs", "detect", "train2", "results.csv"),
+                os.path.join(save_path, "runs", "detect", "train3", "results.csv"),
+            ]
+            
+            # 检查预定义路径
+            for path in possible_paths:
+                if os.path.exists(path):
+                    logger.info(f"找到results.csv文件: {path}")
+                    return path
+            
+            # 尝试查找最新的训练结果目录
+            runs_dir = os.path.join(save_path, "runs", "detect")
+            if os.path.exists(runs_dir):
+                # 获取所有以train开头的目录
+                train_dirs = [d for d in os.listdir(runs_dir) if d.startswith("train") and 
+                             os.path.isdir(os.path.join(runs_dir, d))]
+                
+                if train_dirs:
+                    # 按修改时间排序，获取最新的
+                    train_dirs.sort(key=lambda x: os.path.getmtime(os.path.join(runs_dir, x)), reverse=True)
+                    latest_results = os.path.join(runs_dir, train_dirs[0], "results.csv")
+                    if os.path.exists(latest_results):
+                        logger.info(f"找到最新的results.csv文件: {latest_results}")
+                        return latest_results
+            
+            logger.warning(f"在保存路径 {save_path} 下未找到results.csv文件")
+            return None
+            
+        except Exception as e:
+            logger.error(f"查找本地results.csv文件时发生错误: {e}")
+            return None
     
     def load_remote_log(self):
         """加载远程日志"""
@@ -136,17 +181,24 @@ class TrainingLogViewer(QDialog):
         else:
             server_config = None
         if not server_config:
-            self.log_text.setPlainText("服务器配置不存在")
+            if hasattr(self, 'log_text') and self.log_text and hasattr(self.log_text, 'setPlainText'):
+                self.log_text.setPlainText("服务器配置不存在")
             return
         
         ssh_client = SSHClient(server_config)
         if not ssh_client.connect_to_server():
-            self.log_text.setPlainText("连接服务器失败")
+            if hasattr(self, 'log_text') and self.log_text and hasattr(self.log_text, 'setPlainText'):
+                self.log_text.setPlainText("连接服务器失败")
             return
         
         try:
-            # 查找远程results.csv文件
-            remote_results_file = f"{self.task.remote_path}/runs/detect/train/results.csv"
+            # 根据远程路径查找results.csv文件
+            remote_results_file = self.find_remote_results_file()
+            
+            if not remote_results_file:
+                if hasattr(self, 'log_text') and self.log_text and hasattr(self.log_text, 'setPlainText'):
+                    self.log_text.setPlainText("未找到远程训练结果文件路径")
+                return
             
             # 下载到临时文件
             import tempfile
@@ -157,13 +209,71 @@ class TrainingLogViewer(QDialog):
                 ssh_client.download_file(remote_results_file, temp_file.name)
                 self.parse_and_plot_results(temp_file.name)
             except Exception as e:
-                self.log_text.setPlainText(f"未找到远程训练结果文件: {str(e)}")
+                if hasattr(self, 'log_text') and self.log_text and hasattr(self.log_text, 'setPlainText'):
+                    self.log_text.setPlainText(f"未找到远程训练结果文件: {str(e)}")
             finally:
                 # 清理临时文件
                 if os.path.exists(temp_file.name):
                     os.unlink(temp_file.name)
         finally:
             ssh_client.disconnect_from_server()
+    
+    def find_remote_results_file(self) -> Optional[str]:
+        """根据远程路径查找results.csv文件"""
+        try:
+            # 获取远程路径
+            remote_path = self.task.remote_path
+            
+            if not remote_path or self.task.server_id is None:
+                logger.warning("远程路径为空或服务器ID为空")
+                return None
+            
+            # 尝试SSH客户端查找文件
+            server_config = self.server_config_manager.get_server_config_by_id(self.task.server_id)
+            if not server_config:
+                return None
+            
+            ssh_client = SSHClient(server_config)
+            if not ssh_client.connect_to_server() or not ssh_client.ssh_client:
+                return None
+            
+            try:
+                # 构建可能的results.csv路径
+                possible_paths = [
+                    f"{remote_path}/runs/detect/train/results.csv",
+                    f"{remote_path}/runs/detect/train2/results.csv",
+                    f"{remote_path}/runs/detect/train3/results.csv",
+                ]
+                
+                # 检查预定义路径
+                for path in possible_paths:
+                    stdin, stdout, stderr = ssh_client.ssh_client.exec_command(f"ls {path}")
+                    if stdout.read().decode().strip():
+                        logger.info(f"找到远程results.csv文件: {path}")
+                        return path
+                
+                # 尝试查找最新的训练结果目录
+                find_latest_cmd = f"ls -t {remote_path}/runs/detect/train* 2>/dev/null | head -1"
+                stdin, stdout, stderr = ssh_client.ssh_client.exec_command(find_latest_cmd)
+                latest_train_dir = stdout.read().decode().strip()
+                
+                if latest_train_dir:
+                    remote_results_file = f"{latest_train_dir}/results.csv"
+                    # 检查文件是否存在
+                    stdin, stdout, stderr = ssh_client.ssh_client.exec_command(f"ls {remote_results_file}")
+                    if stdout.read().decode().strip():
+                        logger.info(f"找到最新的远程results.csv文件: {remote_results_file}")
+                        return remote_results_file
+                
+                logger.warning(f"在远程路径 {remote_path} 下未找到results.csv文件")
+                return None
+                
+            finally:
+                ssh_client.disconnect_from_server()
+                
+        except Exception as e:
+            logger.error(f"查找远程results.csv文件时发生错误: {e}")
+            return None
     
     def find_results_file(self, base_path: str) -> Optional[str]:
         """查找results.csv文件"""

@@ -18,6 +18,7 @@ class TrainingTaskStatus(Enum):
     RUNNING = "训练中"
     ERROR = "错误"
     COMPLETED = "已完成"
+    UPLOADING = "文件上传中"
 
 
 class TrainingTask:
