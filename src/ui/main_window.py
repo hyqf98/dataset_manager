@@ -13,7 +13,7 @@ from ..preview.live_preview_panel import LivePreviewPanel
 from ..auto_annotation.model_config_panel import ModelConfigPanel
 from ..auto_annotation.auto_annotation_panel import AutoAnnotationPanel
 from ..dataset_split.dataset_split_panel import DatasetSplitPanel
-from ..auto_training.auto_training_panel import AutoTrainingPanel
+
 # 添加远程服务器相关导入
 from ..remote_server.server_config_panel import ServerConfigPanel
 from ..remote_server.file_transfer_dialog import FileTransferDialog
@@ -216,10 +216,7 @@ class MainWindow(QMainWindow):
                     dataset_split_action.triggered.connect(self.open_dataset_split_panel)
                     dataset_split_menu.addAction(dataset_split_action)
                     
-                    # 添加自动训练菜单项
-                    auto_training_action = QAction('自动训练', self)
-                    auto_training_action.triggered.connect(self.open_auto_training_panel)
-                    dataset_split_menu.addAction(auto_training_action)
+                    
 
                 # 文件上传菜单
                 file_upload_menu = menubar.addMenu('远程服务器管理')
@@ -695,29 +692,7 @@ class MainWindow(QMainWindow):
             logger.error(f"导入划分后的数据集时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
 
-    def open_auto_training_panel(self):
-        """
-        打开自动训练面板
-        """
-        try:
-            # 每次都创建新的实例，避免使用已销毁的对象
-            self.auto_training_panel = AutoTrainingPanel()
-            
-            # 创建对话框并显示面板
-            dialog = QDialog(self)
-            dialog.setWindowTitle("自动训练管理")
-            layout = QHBoxLayout(dialog)
-            layout.addWidget(self.auto_training_panel)
-            dialog.resize(1000, 700)
-            dialog.exec()
-            
-            # 清理引用，避免访问已销毁的对象
-            if hasattr(self, 'auto_training_panel'):
-                delattr(self, 'auto_training_panel')
-        except Exception as e:
-            logger.error(f"打开自动训练面板时发生异常: {str(e)}")
-            logger.error(f"异常详情:\n{traceback.format_exc()}")
-            QMessageBox.critical(self, "错误", f"打开自动训练面板时发生异常: {str(e)}")
+
     
     def open_server_config_panel(self):
         """
