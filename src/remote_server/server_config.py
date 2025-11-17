@@ -1,7 +1,7 @@
 import os
 import json
 from typing import List, Optional
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal
 from ..logging_config import logger
 
 
@@ -10,7 +10,7 @@ class ServerConfig:
     服务器配置类
     """
 
-    def __init__(self, name: str, host: str, port: int = 22, username: str = "", 
+    def __init__(self, name: str, host: str, port: int = 22, username: str = "",
                  password: str = "", private_key_path: str = "", id: Optional[int] = None):
         self.id = id
         self.name = name
@@ -54,8 +54,6 @@ class ServerConfigManager(QObject):
     """
     服务器配置管理器
     """
-    
-    configs_changed = pyqtSignal()  # 配置变化信号
 
     def __init__(self, config_file=None):
         super().__init__()
@@ -95,12 +93,10 @@ class ServerConfigManager(QObject):
         try:
             # 确保目录存在
             os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
-            
+
             data = [sc.to_dict() for sc in self.server_configs]
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            logger.info(f"保存了 {len(self.server_configs)} 个服务器配置到配置文件")
-            self.configs_changed.emit()  # 发出配置变化信号
         except Exception as e:
             logger.error(f"保存服务器配置时出错: {e}")
 

@@ -2,9 +2,9 @@ from enum import Enum
 from typing import Optional, List
 import os
 import json
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem, QDialog, QFormLayout, \
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem, QDialog, QFormLayout, \
     QComboBox, QLineEdit, QMessageBox, QTextEdit, QCheckBox, QDialogButtonBox, QHBoxLayout, QLabel, QFileDialog, QPushButton
-from PyQt5.QtCore import pyqtSignal, Qt
+from PyQt6.QtCore import pyqtSignal, Qt
 from ..logging_config import logger
 
 
@@ -84,7 +84,7 @@ class ModelConfigManager:
             # 确保目录存在
             os.makedirs(dataset_manager_dir, exist_ok=True)
             self.config_file = os.path.join(dataset_manager_dir, "model_configs.json")
-            
+
             # 检查并移动旧的配置文件
             old_config_file = "model_configs.json"
             if os.path.exists(old_config_file) and not os.path.exists(self.config_file):
@@ -123,11 +123,10 @@ class ModelConfigManager:
         try:
             # 确保目录存在
             os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
-            
+
             data = [mc.to_dict() for mc in self.model_configs]
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            logger.info(f"保存了 {len(self.model_configs)} 个模型配置到配置文件")
         except Exception as e:
             logger.error(f"保存模型配置时出错: {e}")
             QMessageBox.critical(None, "错误", f"保存模型配置时出错: {e}")
@@ -193,7 +192,7 @@ class ModelConfigForm(QDialog):
         layout = QFormLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(10)
-        layout.setLabelAlignment(Qt.AlignRight)  # type: ignore
+        layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)  # type: ignore
         layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)  # type: ignore
 
         self.name_edit = QLineEdit()
@@ -206,10 +205,10 @@ class ModelConfigForm(QDialog):
         yolo_layout = QFormLayout(self.yolo_group)
         yolo_layout.setContentsMargins(0, 0, 0, 0)
         yolo_layout.setSpacing(10)
-        yolo_layout.setLabelAlignment(Qt.AlignRight)  # type: ignore
+        yolo_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)  # type: ignore
         yolo_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)  # type: ignore
-        
-        # YOLO模型选择布局（包含浏览按钮）
+
+        # YOLO模型选择布局(包含浏览按钮)
         yolo_model_layout = QHBoxLayout()
         self.yolo_model_name_combo = QComboBox()
         # 从models.txt文件读取模型列表
@@ -219,7 +218,7 @@ class ModelConfigForm(QDialog):
         self.yolo_model_button.clicked.connect(self.select_yolo_model_file)
         yolo_model_layout.addWidget(self.yolo_model_name_combo)
         yolo_model_layout.addWidget(self.yolo_model_button)
-        
+
         self.yolo_classes_edit = QTextEdit()
         self.yolo_classes_edit.setMaximumHeight(100)
         self.yolo_classes_edit.setPlaceholderText("每行输入一个分类，例如：\nperson\ncar\ndog")
@@ -231,9 +230,9 @@ class ModelConfigForm(QDialog):
         openai_layout = QFormLayout(self.openai_group)
         openai_layout.setContentsMargins(0, 0, 0, 0)
         openai_layout.setSpacing(10)
-        openai_layout.setLabelAlignment(Qt.AlignRight)  # type: ignore
+        openai_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)  # type: ignore
         openai_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)  # type: ignore
-        
+
         self.openai_api_url_edit = QLineEdit()
         self.openai_api_key_edit = QLineEdit()
         self.openai_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
@@ -249,7 +248,7 @@ class ModelConfigForm(QDialog):
         openai_layout.addRow("OpenAI提示词:", self.openai_prompt_edit)
         openai_layout.addRow("OpenAI分类:", self.openai_classes_edit)
 
-        # 设置默认值（如果是编辑模式）
+        # 设置默认值(如果是编辑模式)
         if self.model_config:
             self.name_edit.setText(self.model_config.name)
             index = self.type_combo.findData(self.model_config.annotation_type)
@@ -280,7 +279,7 @@ class ModelConfigForm(QDialog):
 
         # 添加按钮
         buttons = QDialogButtonBox()
-        buttons.setStandardButtons(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)  # type: ignore
+        buttons.setStandardButtons(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)  # type: ignore
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
@@ -308,7 +307,7 @@ class ModelConfigForm(QDialog):
             # 获取项目根目录
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             models_file = os.path.join(project_root, "models.txt")
-            
+
             # 如果文件存在，读取模型列表
             if os.path.exists(models_file):
                 with open(models_file, 'r', encoding='utf-8') as f:
@@ -317,25 +316,25 @@ class ModelConfigForm(QDialog):
             else:
                 # 如果文件不存在，使用默认模型列表
                 self.yolo_model_name_combo.addItems([
-                    "yolov8n.pt", 
-                    "yolov8s.pt", 
-                    "yolov8m.pt", 
-                    "yolov8l.pt", 
+                    "yolov8n.pt",
+                    "yolov8s.pt",
+                    "yolov8m.pt",
+                    "yolov8l.pt",
                     "yolov8x.pt",
                     "yolov8s-world.pt",
                     "yolov8s-worldv2.pt",
                     "yolov8m-world.pt",
                     "yolov8m-worldv2.pt"
                 ])
-            
+
         except Exception as e:
             logger.error(f"加载模型列表失败: {str(e)}")
             # 出现错误时使用默认模型列表
             self.yolo_model_name_combo.addItems([
-                "yolov8n.pt", 
-                "yolov8s.pt", 
-                "yolov8m.pt", 
-                "yolov8l.pt", 
+                "yolov8n.pt",
+                "yolov8s.pt",
+                "yolov8m.pt",
+                "yolov8l.pt",
                 "yolov8x.pt",
                 "yolov8s-world.pt",
                 "yolov8s-worldv2.pt",
@@ -378,7 +377,7 @@ class ModelConfigForm(QDialog):
         """
         获取表单中的模型配置对象
         """
-        if self.result() == QDialog.Accepted:
+        if self.result() == QDialog.DialogCode.Accepted:
             annotation_type = self.type_combo.currentData()
 
             kwargs = {}
@@ -428,7 +427,7 @@ class ModelConfigPanel(QWidget):
                 border-bottom: 1px solid #ccc;
             }
         """)
-        
+
         # 创建按钮布局
         button_layout = QHBoxLayout()
         self.add_btn = QPushButton("➕ 添加模型配置")
@@ -448,7 +447,7 @@ class ModelConfigPanel(QWidget):
                 background-color: #3d8b40;
             }
         """)
-        
+
         self.refresh_btn = QPushButton("🔄 刷新")
         self.refresh_btn.setStyleSheet("""
             QPushButton {
@@ -535,8 +534,8 @@ class ModelConfigPanel(QWidget):
                 detail = "无详细信息"
 
             item.setText(2, detail)
-            item.setData(0, Qt.UserRole, mc.id)
-            
+            item.setData(0, Qt.ItemDataRole.UserRole, mc.id)
+
             # 添加操作按钮
             self.add_action_buttons(item, mc.id)
 
@@ -547,7 +546,7 @@ class ModelConfigPanel(QWidget):
         添加模型配置
         """
         form = ModelConfigForm(self)
-        if form.exec_() == QDialog.Accepted:
+        if form.exec() == QDialog.DialogCode.Accepted:
             model_config = form.get_model_config()
             if model_config:
                 self.manager.add_model_config(model_config)
@@ -566,7 +565,7 @@ class ModelConfigPanel(QWidget):
 
         if model_config:
             form = ModelConfigForm(self, model_config)
-            if form.exec_() == QDialog.Accepted:
+            if form.exec() == QDialog.DialogCode.Accepted:
                 updated_model_config = form.get_model_config()
                 if updated_model_config:
                     updated_model_config.id = model_config_id
@@ -578,15 +577,15 @@ class ModelConfigPanel(QWidget):
         删除模型配置
         """
         reply = QMessageBox.question(self, "确认", "确定要删除选中的模型配置吗?",
-                                     QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
             self.manager.delete_model_config(model_config_id)
             self.refresh_model_configs()
 
     def add_action_buttons(self, item, model_config_id):
         """
         为指定项添加操作按钮
-        
+
         Args:
             item: 树形控件项
             model_config_id: 模型配置ID
@@ -596,7 +595,7 @@ class ModelConfigPanel(QWidget):
         button_layout = QHBoxLayout(button_widget)
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(2)
-        
+
         # 编辑按钮
         edit_btn = QPushButton("编辑")
         edit_btn.setStyleSheet("""
@@ -613,7 +612,7 @@ class ModelConfigPanel(QWidget):
             }
         """)
         edit_btn.clicked.connect(lambda: self.update_model_config(model_config_id))
-        
+
         # 删除按钮
         delete_btn = QPushButton("删除")
         delete_btn.setStyleSheet("""
@@ -630,9 +629,9 @@ class ModelConfigPanel(QWidget):
             }
         """)
         delete_btn.clicked.connect(lambda: self.delete_model_config(model_config_id))
-        
+
         button_layout.addWidget(edit_btn)
         button_layout.addWidget(delete_btn)
-        
-        # 将按钮容器设置为项的第4列（操作列）
+
+        # 将按钮容器设置为项的第4列(操作列)
         self.model_config_tree.setItemWidget(item, 3, button_widget)

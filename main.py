@@ -2,8 +2,8 @@
 import sys
 import traceback
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication
 
 from src.logging_config import logger
 from src.ui.main_window import MainWindow
@@ -16,25 +16,15 @@ def main():
     """
     主函数，用于启动数据集管理应用程序
     """
-    logger.info("启动数据集管理应用程序")
-
     try:
-        # 启用高DPI缩放支持
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-
         app = QApplication(sys.argv)
         window = MainWindow()
         window.show()
-        logger.info("应用程序窗口已显示")
-        sys.exit(app.exec_())
+        sys.exit(app.exec())
     except Exception as e:
         # 记录异常信息到日志
         logger.error(f"应用程序启动时发生异常: {str(e)}")
         logger.error(f"异常详情:\n{traceback.format_exc()}")
-        # 打印到控制台确保能看到错误
-        print(f"应用程序启动时发生异常: {str(e)}")
-        print(f"详细信息:\n{traceback.format_exc()}")
         # 以错误码退出
         sys.exit(1)
 

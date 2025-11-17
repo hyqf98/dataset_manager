@@ -3,11 +3,11 @@ import shutil
 import json
 from enum import Enum
 from typing import Optional
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QFormLayout, QLineEdit, QFileDialog, 
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QFormLayout, QLineEdit, QFileDialog,
                              QMessageBox, QDoubleSpinBox, QLabel, QProgressBar, QHBoxLayout, QCheckBox,
                              QTreeWidget, QTreeWidgetItem, QHeaderView, QDialog, QDialogButtonBox, QTextEdit)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QFont
 from ..logging_config import logger
 import yaml
 
@@ -16,8 +16,8 @@ class DatasetSplitConfig:
     """
     数据集划分配置类
     """
-    
-    def __init__(self, name="", dataset_path="", output_path="", 
+
+    def __init__(self, name="", dataset_path="", output_path="",
                  train_ratio=0.7, val_ratio=0.2, test_ratio=0.1,
                  generate_script=False, train_params="", config_id=None):
         self.id = config_id
@@ -29,7 +29,7 @@ class DatasetSplitConfig:
         self.test_ratio = test_ratio
         self.generate_script = generate_script
         self.train_params = train_params
-        
+
     def to_dict(self):
         """转换为字典"""
         return {
@@ -43,7 +43,7 @@ class DatasetSplitConfig:
             'generate_script': self.generate_script,
             'train_params': self.train_params
         }
-    
+
     @classmethod
     def from_dict(cls, data):
         """从字典创建对象"""
@@ -64,17 +64,17 @@ class DatasetSplitConfigManager:
     """
     数据集划分配置管理器
     """
-    
+
     def __init__(self):
         # 配置文件路径设置为用户目录下的.dataset_m路径
         user_home = os.path.expanduser("~")
         dataset_manager_dir = os.path.join(user_home, ".dataset_m")
         os.makedirs(dataset_manager_dir, exist_ok=True)
         self.config_file = os.path.join(dataset_manager_dir, "dataset_split_configs.json")
-        
+
         self.configs = []
         self.load_configs()
-        
+
     def load_configs(self):
         """加载配置"""
         try:
@@ -89,18 +89,17 @@ class DatasetSplitConfigManager:
         except Exception as e:
             logger.error(f"加载数据集划分配置时出错: {e}")
             self.configs = []
-            
+
     def save_configs(self):
         """保存配置"""
         try:
             data = [config.to_dict() for config in self.configs]
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            logger.info(f"保存了 {len(self.configs)} 个数据集划分配置")
         except Exception as e:
             logger.error(f"保存数据集划分配置时出错: {e}")
             QMessageBox.critical(None, "错误", f"保存配置时出错: {e}")
-            
+
     def add_config(self, config):
         """添加配置"""
         if self.configs:
@@ -110,7 +109,7 @@ class DatasetSplitConfigManager:
         self.configs.append(config)
         self.save_configs()
         logger.info(f"添加数据集划分配置: {config.name}")
-        
+
     def update_config(self, config):
         """更新配置"""
         for i, c in enumerate(self.configs):
@@ -120,13 +119,13 @@ class DatasetSplitConfigManager:
                 logger.info(f"更新数据集划分配置: {config.name}")
                 return True
         return False
-        
+
     def delete_config(self, config_id):
         """删除配置"""
         self.configs = [c for c in self.configs if c.id != config_id]
         self.save_configs()
         logger.info(f"删除数据集划分配置 ID: {config_id}")
-        
+
     def get_configs(self):
         """获取所有配置"""
         return self.configs
@@ -134,7 +133,7 @@ class DatasetSplitConfigManager:
 
 class DatasetSplitter:
     """
-    数据集划分器（用于模型训练）
+    数据集划分器(用于模型训练)
     """
 
     @staticmethod
@@ -144,7 +143,7 @@ class DatasetSplitter:
 
         Args:
             dataset_path (str): 数据集路径
-            output_path (str): 输出路径（直接使用，不再添加数据集名称后缀）
+            output_path (str): 输出路径(直接使用，不再添加数据集名称后缀)
             train_ratio (float): 训练集比例
             val_ratio (float): 验证集比例
             test_ratio (float): 测试集比例
@@ -178,17 +177,17 @@ class DatasetSplitter:
                 labels_dir = os.path.join(dir_path, "labels")
                 os.makedirs(images_dir, exist_ok=True)
                 os.makedirs(labels_dir, exist_ok=True)
-            
+
             logger.info(f"创建输出目录结构: {output_path}")
 
-            # 获取所有图片文件（递归查找所有层级，问题4修复：过滤delete文件夹）
+            # 获取所有图片文件(递归查找所有层级，问题4修复：过滤delete文件夹)
             image_files = []
             all_files = []
             for root, dirs, files in os.walk(dataset_path):
                 # 问题4修复：过滤delete文件夹
                 if "delete" in dirs:
                     dirs.remove("delete")
-                    
+
                 for file in files:
                     all_files.append(os.path.join(root, file))
 
@@ -222,7 +221,7 @@ class DatasetSplitter:
                     target_image_path = os.path.join(target_dir, "images", image_name)
                     shutil.copy2(image_file, target_image_path)
 
-                    # 复制对应的标签文件（如果存在）
+                    # 复制对应的标签文件(如果存在)
                     # 递归查找所有层级中与图片同名的标注文件
                     image_base_name = os.path.splitext(image_name)[0]
                     label_file = None
@@ -268,17 +267,17 @@ class DatasetSplitter:
             list: 类别名称列表
         """
         logger.info(f"开始从数据集中提取类别信息: {dataset_path}")
-        
+
         # 第一步：从标注文件中提取所有类别ID
         class_ids = set()
         annotation_file_count = 0
-        
-        # 递归查找所有标注文件（.txt 文件，但排除 classes.txt）
+
+        # 递归查找所有标注文件(.txt 文件，但排除 classes.txt)
         for root, dirs, files in os.walk(dataset_path):
             # 过滤 delete 文件夹
             if "delete" in dirs:
                 dirs.remove("delete")
-                
+
             for file in files:
                 # 只处理 .txt 文件，但排除 classes.txt
                 if file.endswith(".txt") and file != "classes.txt":
@@ -301,21 +300,21 @@ class DatasetSplitter:
                     except Exception as e:
                         logger.debug(f"读取标注文件 {txt_file_path} 失败: {e}")
                         continue
-        
+
         logger.info(f"扫描了 {annotation_file_count} 个标注文件，找到类别ID: {sorted(class_ids)}")
-        
+
         # 如果没有找到任何类别ID，返回默认值
         if not class_ids:
             logger.warning("未找到任何类别信息，使用默认类别 'default'")
             return ["default"]
-        
+
         # 第二步：尝试从 classes.txt 读取类别名称进行映射
         classes_file = None
         for root, dirs, files in os.walk(dataset_path):
             # 过滤 delete 文件夹
             if "delete" in dirs:
                 dirs.remove("delete")
-                
+
             for file in files:
                 if file == "classes.txt":
                     classes_file = os.path.join(root, file)
@@ -326,12 +325,12 @@ class DatasetSplitter:
         # 按照 class_id 排序
         sorted_ids = sorted(class_ids)
         class_names = []
-        
+
         if classes_file and os.path.exists(classes_file):
             try:
                 with open(classes_file, 'r', encoding='utf-8') as f:
                     all_class_names = [line.strip() for line in f.readlines() if line.strip()]
-                
+
                 # 根据标注文件中的类别ID，从classes.txt中提取对应的类别名称
                 for class_id in sorted_ids:
                     if class_id < len(all_class_names):
@@ -340,12 +339,12 @@ class DatasetSplitter:
                         # 如果ID超出范围，使用默认命名
                         class_names.append(f"class_{class_id}")
                         logger.warning(f"类别ID {class_id} 超出 classes.txt 范围，使用默认名称")
-                
+
                 logger.info(f"从 {classes_file} 映射类别名称: {class_names}")
                 return class_names
             except Exception as e:
                 logger.warning(f"读取 {classes_file} 失败: {e}，使用默认类别名称")
-        
+
         # 如果没有 classes.txt 或读取失败，使用 class_id 生成类别名称
         class_names = [f"class_{i}" for i in sorted_ids]
         logger.info(f"未找到有效的 classes.txt，生成默认类别名称: {class_names}")
@@ -365,7 +364,7 @@ class DatasetSplitter:
             labels_dir = os.path.join(output_path, split, "labels")
             # 确保目录存在
             os.makedirs(labels_dir, exist_ok=True)
-            
+
             # 生成classes.txt文件
             classes_file = os.path.join(labels_dir, "classes.txt")
             with open(classes_file, 'w', encoding='utf-8') as f:
@@ -380,11 +379,11 @@ class DatasetSplitter:
 
         Args:
             output_path (str): 输出路径
-            class_names (list): 类别名称列表（作为备用）
+            class_names (list): 类别名称列表(作为备用)
         """
         # 从 train/labels/classes.txt 读取分类
         train_classes_file = os.path.join(output_path, "train", "labels", "classes.txt")
-        
+
         if os.path.exists(train_classes_file):
             with open(train_classes_file, 'r', encoding='utf-8') as f:
                 class_names = [line.strip() for line in f.readlines() if line.strip()]
@@ -393,14 +392,14 @@ class DatasetSplitter:
             logger.warning(f"{train_classes_file} 不存在，使用默认分类")
             if not class_names:
                 class_names = ["default"]
-        
+
         config = {
             'path': '.',  # 使用相对路径，数据集根目录就是当前目录
             'train': 'train/images',               # 训练集图片路径
             'val': 'val/images',                   # 验证集图片路径
             'test': 'test/images',                 # 测试集图片路径
             'nc': len(class_names),                # 类别数量
-            'names': class_names                   # 类别名称列表（从 train/labels/classes.txt 中读取）
+            'names': class_names                   # 类别名称列表(从 train/labels/classes.txt 中读取)
         }
 
         yaml_path = os.path.join(output_path, "train.yml")
@@ -419,27 +418,27 @@ class DatasetSplitter:
             train_params (str): 训练参数，格式: "key1=value1 key2=value2"
         """
         from jinja2 import Template
-        
+
         # 确保输出路径存在
         if not os.path.exists(output_path):
             os.makedirs(output_path)
 
         # 读取模板文件
         template_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'train_template.py.jinja')
-        
+
         if not os.path.exists(template_path):
             logger.error(f"训练脚本模板不存在: {template_path}")
             raise FileNotFoundError(f"训练脚本模板不存在: {template_path}")
-        
+
         with open(template_path, 'r', encoding='utf-8') as f:
             template_content = f.read()
-        
+
         # 解析用户自定义参数
         custom_params = {}
         if train_params and train_params.strip():
             # 解析格式: "key1=value1 key2=value2" 或 "key1 value1 key2 value2"
             params_str = train_params.strip()
-            
+
             # 尝试以 = 分隔的格式
             if '=' in params_str:
                 # 格式: "key1=value1 key2=value2"
@@ -449,7 +448,7 @@ class DatasetSplitter:
                         key, value = pair.split('=', 1)
                         key = key.strip()
                         value = value.strip()
-                        
+
                         # 尝试转换为数字
                         try:
                             # 验证是否为数字
@@ -468,7 +467,7 @@ class DatasetSplitter:
                     if i + 1 < len(params_parts):
                         key = params_parts[i].strip()
                         value = params_parts[i + 1].strip()
-                        
+
                         # 尝试转换为数字
                         try:
                             if '.' in value:
@@ -478,16 +477,16 @@ class DatasetSplitter:
                         except ValueError:
                             # 字符串，在模板中需要加引号
                             custom_params[key] = f"'{value}'"
-                        
+
                         i += 2
                     else:
                         i += 1
-        
+
         # 使用Jinja2渲染模板
         template = Template(template_content)
         train_script_content = template.render(custom_params=custom_params if custom_params else None)
-        
-        # 写入训练脚本文件（与train.yml同一路径下）
+
+        # 写入训练脚本文件(与train.yml同一路径下)
         train_script_path = os.path.join(output_path, "train.py")
         with open(train_script_path, 'w', encoding='utf-8') as f:
             f.write(train_script_content)
@@ -501,7 +500,7 @@ class DatasetSplitter:
 
 class SplitWorker(QThread):
     """
-    数据集划分工作线程（用于模型训练）
+    数据集划分工作线程(用于模型训练)
     """
     progress_updated = pyqtSignal(int, int)  # current, total
     split_finished = pyqtSignal(bool, str)  # success, message
@@ -546,9 +545,9 @@ class SplitWorker(QThread):
 
 class DatasetSplitPanel(QWidget):
     """
-    数据集划分面板类（用于模型训练）
+    数据集划分面板类(用于模型训练)
     """
-    
+
     # 添加信号：当数据集划分完成时发送输出路径
     dataset_split_completed = pyqtSignal(str)  # 输出路径
 
@@ -769,7 +768,7 @@ class DatasetSplitPanel(QWidget):
         """)
         self.generate_train_script_checkbox.stateChanged.connect(self.on_generate_script_changed)
 
-        # 添加参数输入区域（默认隐藏）
+        # 添加参数输入区域(默认隐藏)
         self.params_widget = QWidget()
         self.params_widget.setVisible(False)
         params_layout = QVBoxLayout(self.params_widget)
@@ -1087,7 +1086,7 @@ class DatasetSplitPanel(QWidget):
         self.split_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # 设置为不确定模式
-        
+
         # 保存输出路径，用于划分完成后导入
         dataset_name = os.path.basename(os.path.normpath(dataset_path))
         self.output_dataset_path = os.path.join(output_path, f"{dataset_name}_train")
@@ -1108,7 +1107,7 @@ class DatasetSplitPanel(QWidget):
         if success:
             QMessageBox.information(self, "成功", message)
             logger.info(message)
-            
+
             # 发送信号，通知主窗口导入划分后的数据集文件夹
             if self.output_dataset_path and os.path.exists(self.output_dataset_path):
                 self.dataset_split_completed.emit(self.output_dataset_path)
@@ -1122,30 +1121,30 @@ class DatasetSplitConfigDialog(QDialog):
     """
     数据集划分配置对话框
     """
-    
+
     def __init__(self, parent=None, config=None):
         super().__init__(parent)
         self.config = config
         self.param_inputs = []
-        
+
         self.setWindowTitle("添加数据集划分配置" if config is None else "编辑数据集划分配置")
         self.setModal(True)
         self.resize(600, 500)
         self.init_ui()
-        
+
     def init_ui(self):
         """初始化界面"""
         layout = QVBoxLayout(self)
-        
+
         # 表单布局
         form_layout = QFormLayout()
-        
+
         # 配置名称
         self.name_edit = QLineEdit()
         if self.config:
             self.name_edit.setText(self.config.name)
         form_layout.addRow("配置名称:", self.name_edit)
-        
+
         # 数据集路径
         dataset_layout = QHBoxLayout()
         self.dataset_path_edit = QLineEdit()
@@ -1157,7 +1156,7 @@ class DatasetSplitConfigDialog(QDialog):
         if self.config:
             self.dataset_path_edit.setText(self.config.dataset_path)
         form_layout.addRow("数据集路径:", dataset_layout)
-        
+
         # 输出路径
         output_layout = QHBoxLayout()
         self.output_path_edit = QLineEdit()
@@ -1169,7 +1168,7 @@ class DatasetSplitConfigDialog(QDialog):
         if self.config:
             self.output_path_edit.setText(self.config.output_path)
         form_layout.addRow("输出路径:", output_layout)
-        
+
         # 比例设置
         self.train_ratio_spin = QDoubleSpinBox()
         self.train_ratio_spin.setRange(0.0, 1.0)
@@ -1177,33 +1176,33 @@ class DatasetSplitConfigDialog(QDialog):
         self.train_ratio_spin.setDecimals(2)
         self.train_ratio_spin.setValue(self.config.train_ratio if self.config else 0.7)
         form_layout.addRow("训练集比例:", self.train_ratio_spin)
-        
+
         self.val_ratio_spin = QDoubleSpinBox()
         self.val_ratio_spin.setRange(0.0, 1.0)
         self.val_ratio_spin.setSingleStep(0.05)
         self.val_ratio_spin.setDecimals(2)
         self.val_ratio_spin.setValue(self.config.val_ratio if self.config else 0.2)
         form_layout.addRow("验证集比例:", self.val_ratio_spin)
-        
+
         self.test_ratio_spin = QDoubleSpinBox()
         self.test_ratio_spin.setRange(0.0, 1.0)
         self.test_ratio_spin.setSingleStep(0.05)
         self.test_ratio_spin.setDecimals(2)
         self.test_ratio_spin.setValue(self.config.test_ratio if self.config else 0.1)
         form_layout.addRow("测试集比例:", self.test_ratio_spin)
-        
+
         # 生成训练脚本
         self.generate_script_check = QCheckBox("生成训练脚本")
         if self.config:
             self.generate_script_check.setChecked(self.config.generate_script)
         self.generate_script_check.stateChanged.connect(self.on_generate_script_changed)
         form_layout.addRow("", self.generate_script_check)
-        
+
         # 训练参数
         self.params_widget = QWidget()
         self.params_widget.setVisible(False)
         params_layout = QVBoxLayout(self.params_widget)
-        
+
         self.train_params_edit = QTextEdit()
         self.train_params_edit.setPlaceholderText("格式: key1=value1 key2=value2")
         self.train_params_edit.setMaximumHeight(100)
@@ -1211,58 +1210,58 @@ class DatasetSplitConfigDialog(QDialog):
             self.train_params_edit.setText(self.config.train_params)
         params_layout.addWidget(QLabel("训练参数:"))
         params_layout.addWidget(self.train_params_edit)
-        
+
         form_layout.addRow(self.params_widget)
-        
+
         layout.addLayout(form_layout)
-        
+
         # 按钮
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-        
+
         # 初始化时检查是否显示参数区域
         if self.config and self.config.generate_script:
             self.params_widget.setVisible(True)
-        
+
     def on_generate_script_changed(self, state):
         """切换生成脚本状态"""
-        self.params_widget.setVisible(state == Qt.Checked)
-        
+        self.params_widget.setVisible(state == Qt.CheckState.Checked)
+
     def browse_dataset_path(self):
         """浏览数据集路径"""
         path = QFileDialog.getExistingDirectory(self, "选择数据集路径")
         if path:
             self.dataset_path_edit.setText(path)
-            
+
     def browse_output_path(self):
         """浏览输出路径"""
         path = QFileDialog.getExistingDirectory(self, "选择输出路径")
         if path:
             self.output_path_edit.setText(path)
-            
+
     def get_config(self):
         """获取配置"""
         # 验证输入
         if not self.name_edit.text().strip():
             QMessageBox.warning(self, "警告", "请输入配置名称")
             return None
-            
+
         if not self.dataset_path_edit.text().strip():
             QMessageBox.warning(self, "警告", "请选择数据集路径")
             return None
-            
+
         if not self.output_path_edit.text().strip():
             QMessageBox.warning(self, "警告", "请选择输出路径")
             return None
-            
+
         # 检查比例之和
         total_ratio = self.train_ratio_spin.value() + self.val_ratio_spin.value() + self.test_ratio_spin.value()
         if abs(total_ratio - 1.0) > 1e-6:
             QMessageBox.warning(self, "警告", "比例之和必须为1.0")
             return None
-            
+
         config = DatasetSplitConfig(
             name=self.name_edit.text().strip(),
             dataset_path=self.dataset_path_edit.text().strip(),
@@ -1273,10 +1272,10 @@ class DatasetSplitConfigDialog(QDialog):
             generate_script=self.generate_script_check.isChecked(),
             train_params=self.train_params_edit.toPlainText().strip()
         )
-        
+
         if self.config:
             config.id = self.config.id
-            
+
         return config
 
 
@@ -1284,22 +1283,22 @@ class DatasetSplitManagementPanel(QWidget):
     """
     数据集划分管理面板
     """
-    
+
     # 添加信号：当数据集划分完成时发送输出路径
     dataset_split_completed = pyqtSignal(str)
-    
+
     def __init__(self):
         super().__init__()
         self.config_manager = DatasetSplitConfigManager()
         self.workers = {}  # 存储工作线程
         self.init_ui()
-        
+
     def init_ui(self):
         """初始化界面"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
-        
+
         # 标题
         title_label = QLabel("数据集划分管理")
         title_label.setStyleSheet("""
@@ -1311,10 +1310,10 @@ class DatasetSplitManagementPanel(QWidget):
             }
         """)
         layout.addWidget(title_label)
-        
+
         # 按钮栏
         button_layout = QHBoxLayout()
-        
+
         self.add_btn = QPushButton("➕ 添加配置")
         self.add_btn.clicked.connect(self.add_config)
         self.add_btn.setStyleSheet("""
@@ -1330,7 +1329,7 @@ class DatasetSplitManagementPanel(QWidget):
                 background-color: #45a049;
             }
         """)
-        
+
         self.refresh_btn = QPushButton("🔄 刷新")
         self.refresh_btn.clicked.connect(self.refresh_configs)
         self.refresh_btn.setStyleSheet("""
@@ -1346,12 +1345,12 @@ class DatasetSplitManagementPanel(QWidget):
                 background-color: #1976D2;
             }
         """)
-        
+
         button_layout.addWidget(self.add_btn)
         button_layout.addWidget(self.refresh_btn)
         button_layout.addStretch()
         layout.addLayout(button_layout)
-        
+
         # 配置列表
         self.config_tree = QTreeWidget()
         self.config_tree.setHeaderLabels(["配置名称", "数据集路径", "输出路径", "比例(T/V/T)", "操作"])
@@ -1378,7 +1377,7 @@ class DatasetSplitManagementPanel(QWidget):
                 font-weight: bold;
             }
         """)
-        
+
         header = self.config_tree.header()
         if header:
             header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
@@ -1387,31 +1386,31 @@ class DatasetSplitManagementPanel(QWidget):
             header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
             header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
             header.resizeSection(4, 250)
-            
+
         layout.addWidget(self.config_tree)
-        
+
         # 初始加载配置
         self.refresh_configs()
-        
+
     def refresh_configs(self):
         """刷新配置列表"""
         self.config_manager.load_configs()
         self.config_tree.clear()
-        
+
         for config in self.config_manager.get_configs():
             item = QTreeWidgetItem(self.config_tree)
             item.setText(0, config.name)
             item.setText(1, config.dataset_path)
             item.setText(2, config.output_path)
             item.setText(3, f"{config.train_ratio}/{config.val_ratio}/{config.test_ratio}")
-            item.setData(0, Qt.UserRole, config.id)
-            
+            item.setData(0, Qt.ItemDataRole.UserRole, config.id)
+
             # 创建操作按钮
             button_widget = QWidget()
             button_layout = QHBoxLayout(button_widget)
             button_layout.setContentsMargins(0, 0, 0, 0)
             button_layout.setSpacing(2)
-            
+
             # 划分按钮
             split_btn = QPushButton("划分")
             split_btn.setStyleSheet("""
@@ -1428,7 +1427,7 @@ class DatasetSplitManagementPanel(QWidget):
                 }
             """)
             split_btn.clicked.connect(lambda checked, c=config: self.split_dataset(c))
-            
+
             # 编辑按钮
             edit_btn = QPushButton("编辑")
             edit_btn.setStyleSheet("""
@@ -1445,7 +1444,7 @@ class DatasetSplitManagementPanel(QWidget):
                 }
             """)
             edit_btn.clicked.connect(lambda checked, c=config: self.edit_config(c))
-            
+
             # 删除按钮
             delete_btn = QPushButton("删除")
             delete_btn.setStyleSheet("""
@@ -1462,51 +1461,51 @@ class DatasetSplitManagementPanel(QWidget):
                 }
             """)
             delete_btn.clicked.connect(lambda checked, c=config: self.delete_config(c))
-            
+
             button_layout.addWidget(split_btn)
             button_layout.addWidget(edit_btn)
             button_layout.addWidget(delete_btn)
-            
+
             self.config_tree.setItemWidget(item, 4, button_widget)
-            
+
         logger.info("刷新数据集划分配置列表")
-        
+
     def add_config(self):
         """添加配置"""
         dialog = DatasetSplitConfigDialog(self)
-        if dialog.exec() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             config = dialog.get_config()
             if config:
                 self.config_manager.add_config(config)
                 self.refresh_configs()
-                
+
     def edit_config(self, config):
         """编辑配置"""
         dialog = DatasetSplitConfigDialog(self, config)
-        if dialog.exec() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             updated_config = dialog.get_config()
             if updated_config:
                 self.config_manager.update_config(updated_config)
                 self.refresh_configs()
-                
+
     def delete_config(self, config):
         """删除配置"""
         reply = QMessageBox.question(
-            self, "确认", 
+            self, "确认",
             f"确定要删除配置 '{config.name}' 吗？",
-            QMessageBox.Yes | QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             self.config_manager.delete_config(config.id)
             self.refresh_configs()
-            
+
     def split_dataset(self, config):
         """划分数据集"""
         # 验证路径
         if not os.path.exists(config.dataset_path):
             QMessageBox.warning(self, "警告", f"数据集路径不存在: {config.dataset_path}")
             return
-            
+
         # 创建工作线程
         worker = SplitWorker(
             config.dataset_path,
@@ -1519,23 +1518,23 @@ class DatasetSplitManagementPanel(QWidget):
         )
         worker.split_finished.connect(lambda success, msg: self.on_split_finished(success, msg, config))
         worker.start()
-        
+
         self.workers[config.id] = worker
         logger.info(f"开始划分数据集: {config.name}")
-        
+
     def on_split_finished(self, success, message, config):
         """划分完成"""
         if success:
             QMessageBox.information(self, "成功", message)
             logger.info(f"数据集划分完成: {config.name}")
-            
-            # 发送信号（直接使用输出路径）
+
+            # 发送信号(直接使用输出路径)
             if os.path.exists(config.output_path):
                 self.dataset_split_completed.emit(config.output_path)
         else:
             QMessageBox.critical(self, "错误", message)
             logger.error(f"数据集划分失败: {message}")
-            
+
         # 清理工作线程
         if config.id in self.workers:
             del self.workers[config.id]

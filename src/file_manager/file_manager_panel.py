@@ -1,7 +1,7 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTreeView, QFileSystemModel, QLineEdit, QLabel, QMenu, \
-    QAbstractItemView, QStyle, QDialog, QTreeWidget, QTreeWidgetItem, QMessageBox, QInputDialog, QShortcut, QFileDialog, QAction
-from PyQt5.QtCore import QDir, Qt, pyqtSignal, QStandardPaths, QSortFilterProxyModel, QModelIndex, QObject, QFileInfo, QFileSystemWatcher
-from PyQt5.QtGui import QContextMenuEvent, QDragEnterEvent, QDropEvent, QKeySequence, QStandardItemModel, QStandardItem, QIcon
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTreeView, QLineEdit, QLabel, QMenu, \
+    QAbstractItemView, QStyle, QDialog, QTreeWidget, QTreeWidgetItem, QMessageBox, QInputDialog, QFileDialog
+from PyQt6.QtCore import QDir, Qt, pyqtSignal, QStandardPaths, QSortFilterProxyModel, QModelIndex, QObject, QFileInfo, QFileSystemWatcher
+from PyQt6.QtGui import QContextMenuEvent, QDragEnterEvent, QDropEvent, QKeySequence, QStandardItemModel, QStandardItem, QIcon, QShortcut, QAction, QFileSystemModel
 import os
 import shutil
 import json
@@ -238,7 +238,7 @@ class FileManagerEvents(QObject):
 
     def on_file_delete(self, file_path, recycle_bin_path):
         """
-        处理文件删除事件（移动到回收站）
+        处理文件删除事件(移动到回收站)
 
         Args:
             file_path (str): 要删除的文件路径
@@ -337,14 +337,14 @@ class FileManagerEvents(QObject):
             if not os.path.basename(recycle_bin_path) == "delete":
                 return
 
-            # 检查目录是否为空（忽略.meta.json文件）
+            # 检查目录是否为空(忽略.meta.json文件)
             items = os.listdir(recycle_bin_path)
             # 过滤掉.meta.json文件
             items = [item for item in items if item != ".meta.json"]
 
             # 如果目录为空，则删除该目录和元数据文件
             if not items:
-                # 删除元数据文件（如果存在）
+                # 删除元数据文件(如果存在)
                 metadata_file = os.path.join(recycle_bin_path, ".meta.json")
                 if os.path.exists(metadata_file):
                     os.remove(metadata_file)
@@ -474,14 +474,14 @@ class FileManagerUI(QWidget):
             # 问题2修复：启用多选模式以支持批量拖动
             self.tree_view.setSelectionMode(QTreeView.SelectionMode.ExtendedSelection)
 
-            # 问题1修复：确保滚动条始终可见（上下和左右）
+            # 问题1修复：确保滚动条始终可见(上下和左右)
             self.tree_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
             self.tree_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
             # 设置TreeView的大小策略，确保可以滚动
-            from PyQt5.QtWidgets import QSizePolicy
+            from PyQt6.QtWidgets import QSizePolicy
             self.tree_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-            # 应用滚动条样式，使其更加明显（使用QTreeView选择器确保样式不被覆盖）
+            # 应用滚动条样式，使其更加明显(使用QTreeView选择器确保样式不被覆盖)
             scrollbar_style = self.get_scrollbar_style()
             # 添加QTreeView前缀确保样式只应用到当前TreeView
             tree_view_style = f"QTreeView {{ border: none; }} {scrollbar_style}"
@@ -501,7 +501,7 @@ class FileManagerUI(QWidget):
             else:
                 logger.warning("无法获取垂直滚动条")
 
-            # 获取水平滚动条并设置其属性（比垂直滚动条更细）
+            # 获取水平滚动条并设置其属性(比垂直滚动条更细)
             h_scrollbar = self.tree_view.horizontalScrollBar()
             if h_scrollbar:
                 h_scrollbar.setMinimumHeight(12)
@@ -887,7 +887,7 @@ class FileManagerUI(QWidget):
                 e.ignore()
                 return
 
-            # 问题2修复：处理内部拖动（批量选中）
+            # 问题2修复：处理内部拖动(批量选中)
             if e.source() == self.tree_view:
                 # 获取所有选中的项目
                 selected_indexes = self.tree_view.selectedIndexes()
@@ -902,7 +902,7 @@ class FileManagerUI(QWidget):
                             logger.debug(f"处理内部拖动: {source_path} -> {target_path}")
 
                     # 批量移动后统一刷新视图
-                    from PyQt5.QtCore import QTimer
+                    from PyQt6.QtCore import QTimer
                     QTimer.singleShot(300, lambda: self.refresh_view_keep_expanded())
 
                     e.acceptProposedAction()
@@ -917,7 +917,7 @@ class FileManagerUI(QWidget):
                     logger.debug(f"处理外部拖动: {source_path} -> {target_path}")
 
                 # 批量移动后统一刷新视图
-                from PyQt5.QtCore import QTimer
+                from PyQt6.QtCore import QTimer
                 QTimer.singleShot(300, lambda: self.refresh_view_keep_expanded())
 
                 e.acceptProposedAction()
@@ -937,7 +937,7 @@ class FileManagerUI(QWidget):
         """
         try:
             # 获取用户主目录
-            home_dir = QStandardPaths.writableLocation(QStandardPaths.HomeLocation)
+            home_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.HomeLocation)
             # 构造.dataset_m目录路径
             dataset_manager_dir = os.path.join(home_dir, ".dataset_m")
 
@@ -1104,7 +1104,7 @@ class RecycleBinDialog(QDialog):
 
     def load_recycle_bin_contents(self):
         """
-        问题3修复：加载回收站中的文件列表（支持多个回收站路径）
+        问题3修复：加载回收站中的文件列表(支持多个回收站路径)
         """
         self.file_tree.clear()
 
@@ -1164,7 +1164,7 @@ class RecycleBinDialog(QDialog):
                 for dir_name in dirs:
                     if dir_name == "delete":
                         delete_path = os.path.join(root, dir_name)
-                        # 确保不是当前根目录下的delete文件夹（已经处理过了）
+                        # 确保不是当前根目录下的delete文件夹(已经处理过了)
                         if delete_path != self.recycle_bin_path:
                             # 为子回收站创建一个分组项
                             group_item = QTreeWidgetItem(self.file_tree)
@@ -1247,7 +1247,7 @@ class RecycleBinDialog(QDialog):
             except Exception as e:
                 logger.error(f"查找元数据文件时发生异常: {str(e)}")
 
-        # 如果找不到元数据，尝试从文件名中提取（假设文件名包含路径信息）
+        # 如果找不到元数据，尝试从文件名中提取(假设文件名包含路径信息)
         return None
 
     def restore_selected(self):
@@ -1292,8 +1292,8 @@ class RecycleBinDialog(QDialog):
             return
 
         reply = QMessageBox.question(self, "确认", f"确定要还原全部 {count} 个文件吗?",
-                                     QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
             restored_count = 0
             # 从后往前删除避免索引变化问题
             for i in range(count - 1, -1, -1):
@@ -1328,7 +1328,7 @@ class RecycleBinDialog(QDialog):
             # 尝试获取原始路径
             original_path = self.extract_original_path(filename)
 
-            # 如果没有原始路径信息，则使用默认还原路径（回收站的上级目录）
+            # 如果没有原始路径信息，则使用默认还原路径(回收站的上级目录)
             if not original_path:
                 parent_dir = os.path.dirname(recycle_bin_path)  # 回收站的上级目录
                 original_path = os.path.join(parent_dir, filename)
@@ -1405,8 +1405,8 @@ class RecycleBinDialog(QDialog):
             return
 
         reply = QMessageBox.question(self, "确认", f"确定要彻底删除选中的 {len(selected_items)} 个文件吗?\n此操作不可恢复!",
-                                     QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
             deleted_count = 0
             for item in selected_items:
                 file_path = item.data(0, Qt.ItemDataRole.UserRole)
@@ -1427,11 +1427,11 @@ class RecycleBinDialog(QDialog):
 
     def delete_all(self):
         """
-        清空回收站（删除所有delete文件夹）
+        清空回收站(删除所有delete文件夹)
         """
         reply = QMessageBox.question(self, "确认", "确定要清空回收站吗?\n此操作不可恢复!",
-                                     QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
             try:
                 # 删除所有delete文件夹
                 if os.path.exists(self.recycle_bin_path):
@@ -1495,14 +1495,14 @@ class RecycleBinDialog(QDialog):
             if not os.path.basename(recycle_bin_path) == "delete":
                 return
 
-            # 检查目录是否为空（忽略.meta.json文件）
+            # 检查目录是否为空(忽略.meta.json文件)
             items = os.listdir(recycle_bin_path)
             # 过滤掉.meta.json文件
             items = [item for item in items if item != ".meta.json"]
 
             # 如果目录为空，则删除该目录和元数据文件
             if not items:
-                # 删除元数据文件（如果存在）
+                # 删除元数据文件(如果存在)
                 metadata_file = os.path.join(recycle_bin_path, ".meta.json")
                 if os.path.exists(metadata_file):
                     os.remove(metadata_file)
@@ -1519,7 +1519,7 @@ class RecycleBinDialog(QDialog):
         格式化文件大小显示
 
         Args:
-            size (int): 文件大小（字节）
+            size (int): 文件大小(字节)
 
         Returns:
             str: 格式化后的大小字符串
@@ -1650,7 +1650,7 @@ class FileManagerPanel(QWidget):
 
     def find_and_select_file(self, search_text):
         """
-        在文件树中查找并选中匹配的文件（不触发预览）
+        在文件树中查找并选中匹配的文件(不触发预览)
 
         Args:
             search_text (str): 要搜索的文本
@@ -1666,7 +1666,7 @@ class FileManagerPanel(QWidget):
             matched_index = self._find_file_in_model(self.ui.model.invisibleRootItem(), search_text.lower())
 
             if matched_index and matched_index.isValid():
-                # 选中找到的文件（不触发预览）
+                # 选中找到的文件(不触发预览)
                 self.ui.tree_view.setCurrentIndex(matched_index)
                 # 展开到该文件的路径
                 parent = matched_index.parent()
@@ -1690,7 +1690,7 @@ class FileManagerPanel(QWidget):
 
         Args:
             parent_item (QStandardItem): 父项
-            search_text (str): 要搜索的文本（小写）
+            search_text (str): 要搜索的文本(小写)
 
         Returns:
             QModelIndex: 匹配的索引，如果未找到则返回None
@@ -1719,7 +1719,7 @@ class FileManagerPanel(QWidget):
                     child_index = child_item.index()
                     if self.ui.tree_view.isExpanded(child_index):
                         # 只有在文件夹已展开的情况下才继续搜索
-                        # 检查是否是占位项，如果是则跳过（说明还未真正展开）
+                        # 检查是否是占位项，如果是则跳过(说明还未真正展开)
                         first_grandchild = child_item.child(0)
                         if first_grandchild and first_grandchild.text() == "加载中...":
                             # 跳过未加载的文件夹
@@ -1752,7 +1752,7 @@ class FileManagerPanel(QWidget):
                     self,
                     "确认导入",
                     f"文件夹: {folder_name}\n大小: {folder_size_mb:.2f} MB\n\n确定要导入此文件夹吗？",
-                    QMessageBox.Yes | QMessageBox.No
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
 
                 if reply == QMessageBox.StandardButton.Yes:
@@ -1774,11 +1774,11 @@ class FileManagerPanel(QWidget):
             logger.error(f"导入文件夹时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"导入文件夹时发生异常: {str(e)}")
-    
+
     def import_folder(self, folder_path):
         """
-        Bug修复：自动导入指定文件夹（用于数据集划分后自动导入）
-        
+        Bug修复：自动导入指定文件夹(用于数据集划分后自动导入)
+
         Args:
             folder_path (str): 要导入的文件夹路径
         """
@@ -1786,15 +1786,15 @@ class FileManagerPanel(QWidget):
             if not folder_path or not os.path.exists(folder_path):
                 logger.warning(f"导入文件夹失败，路径不存在: {folder_path}")
                 return
-            
+
             # 检查是否已经导入
             if folder_path not in self.imported_root_paths:
                 self.imported_root_paths.append(folder_path)
                 self.ui.set_root_paths(self.imported_root_paths)
-                
+
                 # 添加文件监听
                 self.add_path_to_watcher(folder_path)
-                
+
                 logger.info(f"自动导入文件夹: {folder_path}")
             else:
                 logger.info(f"文件夹已存在于导入列表: {folder_path}")
@@ -1810,7 +1810,7 @@ class FileManagerPanel(QWidget):
             folder_path (str): 文件夹路径
 
         Returns:
-            float: 文件夹大小（MB）
+            float: 文件夹大小(MB)
         """
         try:
             total_size = 0
@@ -1854,7 +1854,7 @@ class FileManagerPanel(QWidget):
 
     def remove_folder(self):
         """
-        移除文件夹功能（从软件管理中移除，不删除文件系统中的文件夹）
+        移除文件夹功能(从软件管理中移除，不删除文件系统中的文件夹)
         """
         try:
             file_path = self.ui.get_selected_path()
@@ -1942,7 +1942,7 @@ class FileManagerPanel(QWidget):
 
             # 打开统一的回收站对话框，传递所有回收站路径
             dialog = RecycleBinDialog(all_recycle_bins, self)
-            dialog.exec_()
+            dialog.exec()
 
             # 回收站关闭后，刷新视图并保持展开状态
             self.refresh_view_keep_expanded()
@@ -2057,7 +2057,7 @@ class FileManagerPanel(QWidget):
 
     def _collect_all_files(self):
         """
-        收集模型中所有的文件（递归）
+        收集模型中所有的文件(递归)
 
         Returns:
             list: 文件信息列表，每项包含 {'path': 文件路径, 'name': 文件名}
@@ -2083,7 +2083,7 @@ class FileManagerPanel(QWidget):
 
         Args:
             parent_item: 父项
-            files_list: 文件列表（用于累积结果）
+            files_list: 文件列表(用于累积结果)
         """
         try:
             if not parent_item:
@@ -2234,7 +2234,6 @@ class FileManagerPanel(QWidget):
             path (str): 变化的目录路径
         """
         try:
-            logger.debug(f"目录变化: {path}")
             # 刷新视图，保持展开状态
             self.refresh_view_keep_expanded()
         except Exception as e:
@@ -2264,7 +2263,6 @@ class FileManagerPanel(QWidget):
 
             # 1. 保存当前展开的路径
             expanded_paths = self._get_expanded_paths()
-            logger.debug(f"保存了 {len(expanded_paths)} 个展开路径")
 
             # 2. 刷新视图
             if self.imported_root_paths:
@@ -2504,7 +2502,6 @@ class FileManagerPanel(QWidget):
                             self.ui.tree_view.collapse(index)
                         else:
                             self.ui.tree_view.expand(index)
-                    logger.debug(f"文件夹点击: {file_path}")
                 else:
                     # 如果是文件，发送信号在预览面板中显示
                     self.events.file_selected.emit(file_path)
@@ -2515,7 +2512,7 @@ class FileManagerPanel(QWidget):
 
     def on_selection_changed(self, current, previous):
         """
-        问题4修复：处理选择变化事件（支持键盘导航）
+        问题4修复：处理选择变化事件(支持键盘导航)
 
         Args:
             current: 当前选中的索引
@@ -2577,7 +2574,7 @@ class FileManagerPanel(QWidget):
 
     def delete_selected_file(self):
         """
-        【重构】删除选中的文件（通过Delete键），删除后切换到下一个文件并保持展开状态
+        【重构】删除选中的文件(通过Delete键)，删除后切换到下一个文件并保持展开状态
         """
         try:
             file_path = self.ui.get_selected_path()
@@ -2626,6 +2623,11 @@ class FileManagerPanel(QWidget):
                     new_folder_action.triggered.connect(lambda: self.create_new_folder(file_path))
                     context_menu.addAction(new_folder_action)
 
+                    # 添加新建文件选项
+                    new_file_action = QAction("新建文件", self)
+                    new_file_action.triggered.connect(lambda: self.create_new_file(file_path))
+                    context_menu.addAction(new_file_action)
+
                     # 添加重命名文件夹选项
                     rename_action = QAction("重命名", self)
                     rename_action.triggered.connect(lambda: self.rename_file_or_folder(file_path))
@@ -2638,14 +2640,14 @@ class FileManagerPanel(QWidget):
                     upload_action.triggered.connect(lambda: self.upload_files(file_path))
                     context_menu.addAction(upload_action)
                 else:
-                    # 选中的是文件，添加算法测试选项（仅对支持的文件格式）
+                    # 选中的是文件，添加算法测试选项(仅对支持的文件格式)
                     if self.is_supported_file(file_path):
                         algorithm_test_action = QAction("算法测试", self)
                         algorithm_test_action.triggered.connect(lambda: self.algorithm_test(file_path))
                         context_menu.addAction(algorithm_test_action)
                         context_menu.addSeparator()
 
-                # 添加删除选项（适用于文件和文件夹）
+                # 添加删除选项(适用于文件和文件夹)
                 delete_action = QAction("删除", self)
                 delete_action.triggered.connect(lambda: self.delete_file(file_path))
                 context_menu.addAction(delete_action)
@@ -2654,7 +2656,7 @@ class FileManagerPanel(QWidget):
             if self.ui and self.ui.tree_view:
                 viewport = self.ui.tree_view.viewport()
                 if viewport:
-                    context_menu.exec_(viewport.mapToGlobal(position))
+                    context_menu.exec(viewport.mapToGlobal(position))
             logger.debug(f"显示上下文菜单: {file_path}")
         except Exception as e:
             logger.error(f"显示上下文菜单时发生异常: {str(e)}")
@@ -2689,7 +2691,7 @@ class FileManagerPanel(QWidget):
 
     def delete_file(self, file_path):
         """
-        【重构】删除文件（移动到回收站），删除后切换到下一个文件并保持展开状态
+        【重构】删除文件(移动到回收站)，删除后切换到下一个文件并保持展开状态
 
         Args:
             file_path (str): 要删除的文件路径
@@ -2718,7 +2720,7 @@ class FileManagerPanel(QWidget):
         # 1. 保存当前展开状态
         expanded_paths = self._get_expanded_paths()
 
-        # 2. 查找下一个文件（在删除前）
+        # 2. 查找下一个文件(在删除前)
         next_file_path = self._find_next_file(file_path)
 
         # 3. 确认删除
@@ -2738,9 +2740,9 @@ class FileManagerPanel(QWidget):
         # 5. 刷新视图并恢复展开状态
         self._refresh_and_restore(expanded_paths)
 
-        # 6. 选中并预览下一个文件（延迟执行）
+        # 6. 选中并预览下一个文件(延迟执行)
         if next_file_path:
-            from PyQt5.QtCore import QTimer
+            from PyQt6.QtCore import QTimer
             QTimer.singleShot(200, lambda: self._select_and_preview_file(next_file_path))
 
         logger.info(f"删除完成: {file_path}")
@@ -2850,7 +2852,7 @@ class FileManagerPanel(QWidget):
                 logger.debug("源文件和目标位置相同，无需移动")
                 return  # 相同目录，无需移动
 
-            # 检查目标是否是源的子目录（避免移动到自己的子目录中）
+            # 检查目标是否是源的子目录(避免移动到自己的子目录中)
             source_abs = os.path.abspath(source_path)
             target_abs = os.path.abspath(target_path)
             try:
@@ -2862,7 +2864,7 @@ class FileManagerPanel(QWidget):
                 # 在不同的驱动器上，可以继续
                 pass
 
-            # 执行移动操作（批量移动时不显示确认对话框）
+            # 执行移动操作(批量移动时不显示确认对话框)
             try:
                 source_name = os.path.basename(source_path)
                 destination = os.path.join(target_path, source_name)
@@ -2936,6 +2938,74 @@ class FileManagerPanel(QWidget):
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"创建新文件夹时发生异常: {str(e)}")
 
+    def create_new_file(self, parent_path):
+        """
+        在指定路径下创建新文件
+
+        Args:
+            parent_path (str): 父文件夹路径
+        """
+        try:
+            # 弹出输入对话框获取新文件名称
+            file_name, ok = QInputDialog.getText(self, "新建文件", "请输入文件名称:")
+            if not ok or not file_name:
+                logger.debug("取消创建新文件")
+                return
+
+            # 检查文件名称是否有效
+            file_name = file_name.strip()
+            if not file_name:
+                QMessageBox.warning(self, "警告", "文件名称不能为空!")
+                logger.warning("文件名称为空")
+                return
+
+            # 检查是否包含非法字符
+            illegal_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|']
+            if any(char in file_name for char in illegal_chars):
+                QMessageBox.warning(self, "警告", "文件名称包含非法字符!\n非法字符包括: / \\ : * ? \" < > |")
+                logger.warning(f"文件名称包含非法字符: {file_name}")
+                return
+
+            # 构造新文件路径
+            new_file_path = os.path.join(parent_path, file_name)
+
+            # 检查文件是否已存在
+            if os.path.exists(new_file_path):
+                QMessageBox.warning(self, "警告", f"文件 '{file_name}' 已存在!")
+                logger.warning(f"文件已存在: {new_file_path}")
+                return
+
+            try:
+                # 创建新文件
+                with open(new_file_path, 'w', encoding='utf-8') as f:
+                    # 可以根据文件扩展名添加默认内容
+                    _, ext = os.path.splitext(file_name)
+                    if ext.lower() in ['.txt', '.md']:
+                        f.write("")
+                    elif ext.lower() in ['.py']:
+                        f.write("# -*- coding: utf-8 -*-\n\n")
+                    elif ext.lower() in ['.json']:
+                        f.write("{}\n")
+                    elif ext.lower() in ['.xml']:
+                        f.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+                    else:
+                        f.write("")
+
+                logger.info(f"创建新文件: {new_file_path}")
+
+                # 刷新视图并保持展开状态
+                self.refresh_view_keep_expanded()
+
+                # 选中并预览新创建的文件
+                self._select_and_preview_file(new_file_path)
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"创建文件失败: {str(e)}")
+                logger.error(f"创建文件失败: {str(e)}", exc_info=True)
+        except Exception as e:
+            logger.error(f"创建新文件时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"创建新文件时发生异常: {str(e)}")
+
     def upload_files(self, local_path):
         """
         上传文件到远程服务器
@@ -2958,14 +3028,14 @@ class FileManagerPanel(QWidget):
                 logger.warning("尝试上传文件但没有配置的服务器")
                 return
 
-            # 让用户选择服务器（无论有几个服务器配置）
+            # 让用户选择服务器(无论有几个服务器配置)
             selected_server = None
             if len(server_configs) == 1:
                 # 只有一个服务器配置，直接使用但仍然显示选择
                 selected_server = server_configs[0]
             else:
                 # 有多个服务器配置，让用户选择
-                from PyQt5.QtWidgets import QInputDialog
+                from PyQt6.QtWidgets import QInputDialog
                 server_names = [sc.name for sc in server_configs]
                 selected_name, ok = QInputDialog.getItem(
                     self, "选择服务器", "请选择要上传到的服务器:", server_names, 0, False
@@ -3015,7 +3085,7 @@ class FileManagerPanel(QWidget):
                 # 如果有确认对话框打开，则模拟点击"是"按钮
                 focused_widget = self.focusWidget()
                 if isinstance(focused_widget, QMessageBox):
-                    yes_button = focused_widget.button(QMessageBox.Yes)
+                    yes_button = focused_widget.button(QMessageBox.StandardButton.Yes)
                     if yes_button and yes_button.isEnabled():
                         yes_button.click()
                         return
@@ -3025,7 +3095,7 @@ class FileManagerPanel(QWidget):
                 # 如果有确认对话框打开，则模拟点击"否"按钮
                 focused_widget = self.focusWidget()
                 if isinstance(focused_widget, QMessageBox):
-                    no_button = focused_widget.button(QMessageBox.No)
+                    no_button = focused_widget.button(QMessageBox.StandardButton.No)
                     if no_button and no_button.isEnabled():
                         no_button.click()
                         return
@@ -3243,7 +3313,7 @@ class FileManagerPanel(QWidget):
             try:
                 # Bug修复：检查是否重命名的是已导入的根路径
                 is_imported_root = file_path in self.imported_root_paths
-                
+
                 # 执行重命名操作
                 os.rename(file_path, new_path)
                 logger.info(f"重命名: {file_path} -> {new_path}")
@@ -3255,12 +3325,12 @@ class FileManagerPanel(QWidget):
                     # 从导入路径列表中移除旧路径
                     if file_path in self.imported_root_paths:
                         self.imported_root_paths.remove(file_path)
-                    
+
                     # 添加新路径到导入列表
                     self.imported_root_paths.append(new_path)
                     # 保存新路径到持久化存储
                     self.ui.save_imported_path(new_path)
-                    
+
                     logger.info(f"已导入根路径重命名同步完成: {file_path} -> {new_path}")
 
                 # 刷新视图并保持展开状态
@@ -3287,15 +3357,15 @@ class FileManagerPanel(QWidget):
             # 创建算法测试对话框
             self.algorithm_test_dialog = AlgorithmTestPanel(file_path)
 
-            # 连接信号（但不直接连接到文件管理器的选择方法，避免影响主预览面板）
+            # 连接信号(但不直接连接到文件管理器的选择方法，避免影响主预览面板)
             # 而是连接到专门处理算法测试面板内部切换的方法
             self.algorithm_test_dialog.switch_to_previous.connect(self.on_algorithm_test_prev)
             self.algorithm_test_dialog.switch_to_next.connect(self.on_algorithm_test_next)
 
             # 显示对话框
-            self.algorithm_test_dialog.exec_()
+            self.algorithm_test_dialog.exec()
 
-            # 问题2修复：对话框关闭后保持展开状态（只刷新不改变展开）
+            # 问题2修复：对话框关闭后保持展开状态(只刷新不改变展开)
             # 注意：这里不需要刷新，因为算法测试只是预览，不会修改文件系统
 
             logger.info(f"算法测试完成: {file_path}")

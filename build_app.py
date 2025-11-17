@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""
+用于将数据集管理器打包成 macOS 应用程序的脚本
+"""
+
+import os
+import sys
+import subprocess
+import shutil
+from pathlib import Path
+
+def install_pyinstaller():
+    """安装 PyInstaller"""
+    try:
+        import PyInstaller
+        print("PyInstaller 已安装")
+    except ImportError:
+        print("正在安装 PyInstaller...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
+
+def create_spec_file():
+    """创建 PyInstaller spec 文件"""
+    spec_content = '''
+# -*- mode: python ; coding: utf-8 -*-
+
+import os
+import sys
+from pathlib import Path
+
+# 获取项目根目录
+project_root = Path(os.path.dirname(os.path.abspath(__file__)))
+
+# 分析项目结构，添加所有需要的模块
+block_cipher = None
+
+a = Analysis(
+    [str(project_root / 'main.py')],
+    pathex=[str(project_root)],
+    binaries=[],
+    datas=[
+        # 添加资源文件
+        (str(project_root / 'train_template.py.jinja'), '.'),
+        (str(project_root / 'models.txt'), '.'),
+        # 如果有图标文件，也添加进来
+        # (str(project_root / 'icon.icns'), '.'),
+    ],
+    hiddenimports=[
+        # 确保所有必要的模块都被包含
+        'PyQt6',
+        'PyQt6.QtCore',
+        'PyQt6.QtGui',
+        'PyQt6.QtWidgets',
+        'cv2',
+        'ultralytics',
+        'openai',
+        'paramiko',
+        'matplotlib',
+        'jinja2',
+        'yaml',
+        'pandas',
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    [],
+    name='dataset_manager',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,  # 设置为 False 以创建无控制台窗口的应用程序
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
+app = BUNDLE(
+    exe,
+    name='dataset_manager.app',
+    icon=None,
+    bundle_identifier='com.dataset.manager',
+)
+'''
+    
+    with open('dataset_manager.spec', 'w', encoding='utf-8') as f:
+        f.write(spec_content)
+    print("已创建 spec 文件: dataset_manager.spec")
+
+def build_app():
+    """使用 PyInstaller 构建应用程序"""
+    print("开始构建应用程序...")
+    
+    # 确保在项目根目录
+    project_root = Path(__file__).parent
+    os.chdir(project_root)
+    
+    # 创建 spec 文件
+    create_spec_file()
+    
+    # 使用 PyInstaller 构建
+    try:
+        subprocess.check_call([
+            sys.executable, "-m", "PyInstaller", 
+            "--clean",  # 清理之前的构建
+            "dataset_manager.spec"
+        ])
+        print("应用程序构建完成!")
+        print(f"应用程序位置: {project_root / 'dist' / 'dataset_manager.app'}")
+    except subprocess.CalledProcessError as e:
+        print(f"构建失败: {e}")
+        sys.exit(1)
+
+def main():
+    """主函数"""
+    print("数据集管理器打包脚本")
+    print("=" * 30)
+    
+    # 安装 PyInstaller
+    install_pyinstaller()
+    
+    # 构建应用程序
+    build_app()
+    
+    print("=" * 30)
+    print("打包完成!")
+
+if __name__ == "__main__":
+    main()

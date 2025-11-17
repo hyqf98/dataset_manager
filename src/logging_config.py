@@ -1,6 +1,6 @@
 import logging
 import os
-from PyQt5.QtCore import QStandardPaths
+from PyQt6.QtCore import QStandardPaths
 
 # 创建日志目录
 def get_log_directory():
@@ -11,7 +11,7 @@ def get_log_directory():
         str: 日志目录路径
     """
     # 获取用户主目录
-    home_dir = QStandardPaths.writableLocation(QStandardPaths.HomeLocation)
+    home_dir = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.HomeLocation)
     # 构造.dataset_m目录路径
     log_dir = os.path.join(home_dir, ".dataset_m", "logs")
     

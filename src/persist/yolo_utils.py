@@ -1,6 +1,6 @@
 import os
 import cv2
-from PyQt5.QtCore import QRect, QPoint
+from PyQt6.QtCore import QRect, QPoint
 
 
 def save_yolo_annotations(file_path, image_label, class_names):
@@ -13,7 +13,7 @@ def save_yolo_annotations(file_path, image_label, class_names):
         class_names (list): 类别名称列表
     """
     # 获取图片尺寸
-    pixmap = image_label.pixmap
+    pixmap = image_label._pixmap
     if not pixmap:
         return
         
@@ -105,7 +105,7 @@ def load_yolo_annotations(file_path, class_names, annotation_file=None):
         # 尝试使用cv2.imread读取
         img = cv2.imread(normalized_path)
         
-        # 如果cv2.imread失败（通常是中文路径问题），使用cv2.imdecode
+        # 如果cv2.imread失败(通常是中文路径问题)，使用cv2.imdecode
         if img is None:
             # 使用numpy和cv2.imdecode来处理中文路径
             import numpy as np

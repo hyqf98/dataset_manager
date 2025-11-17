@@ -135,7 +135,7 @@ class UnsupportedPreviewStrategy(PreviewStrategy):
 
     def supported_formats(self):
         """
-        返回支持的文件格式列表（空）
+        返回支持的文件格式列表(空)
 
         Returns:
             list: 空列表

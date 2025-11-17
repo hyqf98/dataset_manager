@@ -1,10 +1,11 @@
 import os
 import traceback
+from typing import Optional
 
-from PyQt5 import sip
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QWheelEvent
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea
+from PyQt6 import sip
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QWheelEvent
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QScrollArea
 
 from src.preview.image_preview_panel import ImagePreviewPanel
 from src.preview.video_preview_panel import VideoPreviewPanel
@@ -51,8 +52,12 @@ class PreviewPanel(QWidget):
         # 支持的文本格式
         self.supported_text_formats = ['.txt', '.json', '.xml', '.py', '.yaml', '.yml']
 
+        # 预览面板缓存，提高切换性能
+        self.panel_cache = {}  # 格式: {file_path: preview_panel}
+        self.max_cache_size = 5  # 最大缓存5个面板
+
         # 设置焦点策略，确保能接收键盘事件
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def init_ui(self):
         """
@@ -63,9 +68,9 @@ class PreviewPanel(QWidget):
         # 创建滚动区域用于显示内容
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)  # 设置为True以适应内容
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.scroll_area.setAlignment(Qt.AlignCenter)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # 如果有尺寸参数，则设置滚动区域的尺寸
         if self.panel_width is not None and self.panel_height is not None:
@@ -85,7 +90,7 @@ class PreviewPanel(QWidget):
             fullscreen (bool): 是否进入全屏模式
         """
         self.is_fullscreen = fullscreen
-        # 将全屏模式状态传递给当前预览面板（如果有）
+        # 将全屏模式状态传递给当前预览面板(如果有)
         if self.current_preview_panel:
             if hasattr(self.current_preview_panel, 'set_fullscreen'):
                 self.current_preview_panel.set_fullscreen(fullscreen)
@@ -143,18 +148,18 @@ class PreviewPanel(QWidget):
             # 确保content_label对象仍然有效
             if self.content_label is None or sip.isdeleted(self.content_label):
                 self.content_label = QLabel()
-                self.content_label.setAlignment(Qt.AlignCenter)
+                self.content_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.content_label.setWordWrap(True)
             self.scroll_area.setWidget(self.content_label)
 
         # 确保content_label对象仍然有效
         if self.content_label is None or sip.isdeleted(self.content_label):
             self.content_label = QLabel()
-            self.content_label.setAlignment(Qt.AlignCenter)
+            self.content_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.content_label.setWordWrap(True)
 
         self.content_label.setText(message)
-        self.content_label.setAlignment(Qt.AlignCenter)
+        self.content_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
     def show_image_preview(self, file_path):
         """
@@ -163,21 +168,43 @@ class PreviewPanel(QWidget):
         Args:
             file_path (str): 图片文件路径
         """
-        # 获取当前预览面板的尺寸
-        width = self.width()
-        height = self.height()
+        # 清理缓存中已删除的对象
+        self.cleanup_cache()
+        
+        # 检查缓存中是否存在该面板且未被删除
+        image_preview_panel = None
+        if file_path in self.panel_cache:
+            cached_panel = self.panel_cache[file_path]
+            # 检查面板是否仍然有效
+            if cached_panel and not sip.isdeleted(cached_panel):
+                image_preview_panel = cached_panel
+                # 如果处于全屏模式，通知图片预览面板
+                if self.is_fullscreen:
+                    image_preview_panel.set_fullscreen(True)
+                    image_preview_panel.image_label.fit_image_to_view()
+            else:
+                # 从缓存中移除已删除的面板
+                self.panel_cache.pop(file_path, None)
 
-        # 创建新的图片预览面板，传递尺寸参数
-        image_preview_panel = ImagePreviewPanel(width=width, height=height)
+        if image_preview_panel is None:
+            # 获取当前预览面板的尺寸
+            width = self.width()
+            height = self.height()
 
-        # 显示图片
-        image_preview_panel.show_image_with_annotation(file_path)
+            # 创建新的图片预览面板，传递尺寸参数
+            image_preview_panel = ImagePreviewPanel(width=width, height=height)
 
-        # 如果处于全屏模式，通知图片预览面板
-        if self.is_fullscreen:
-            image_preview_panel.set_fullscreen(True)
-            # 立即触发图片尺寸调整以适应全屏
-            image_preview_panel.image_label.fit_image_to_view()
+            # 显示图片
+            image_preview_panel.show_image_with_annotation(file_path)
+
+            # 如果处于全屏模式，通知图片预览面板
+            if self.is_fullscreen:
+                image_preview_panel.set_fullscreen(True)
+                # 立即触发图片尺寸调整以适应全屏
+                image_preview_panel.image_label.fit_image_to_view()
+
+            # 添加到缓存
+            self._add_to_cache(file_path, image_preview_panel)
 
         # 替换显示内容为图片预览面板
         self.scroll_area.setWidget(image_preview_panel)
@@ -249,52 +276,56 @@ class PreviewPanel(QWidget):
             file_path (str): 保存的文件路径
         """
         # 可以在这里添加保存后的处理逻辑
-        logger.info(f"文本文件已保存: {file_path}")
+        pass
 
-    def wheelEvent(self, event: QWheelEvent):
+    def wheelEvent(self, a0: Optional[QWheelEvent]):
         """
         处理鼠标滚轮事件
 
         Args:
-            event (QWheelEvent): 滚轮事件
+            a0 (Optional[QWheelEvent]): 滚轮事件
         """
         if self.scroll_area:
             # 调用滚动区域的滚轮事件处理
-            self.scroll_area.wheelEvent(event)
+            self.scroll_area.wheelEvent(a0)
         else:
-            super().wheelEvent(event)
+            super().wheelEvent(a0)
 
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, a0):
         """
         处理键盘按键事件
 
         Args:
-            event: 键盘事件
+            a0: 键盘事件
         """
+        if not a0:
+            super().keyPressEvent(a0)
+            return
+            
         # 处理Delete键删除当前预览的图片
-        if event.key() == Qt.Key_Delete:
+        if a0.key() == Qt.Key.Key_Delete:
             self.delete_current_image()
         # 处理A/D键切换前后资源
-        elif event.key() == Qt.Key_A:
+        elif a0.key() == Qt.Key.Key_A:
             self.switch_to_previous_resource()
-        elif event.key() == Qt.Key_D:
+        elif a0.key() == Qt.Key.Key_D:
             self.switch_to_next_resource()
         # 处理F11键切换全屏模式
-        elif event.key() == Qt.Key_F11:
+        elif a0.key() == Qt.Key.Key_F11:
             self.toggle_fullscreen.emit()
         # 处理ESC键退出全屏模式
-        elif event.key() == Qt.Key_Escape and self.is_fullscreen:
+        elif a0.key() == Qt.Key.Key_Escape and self.is_fullscreen:
             self.toggle_fullscreen.emit()
-        # 处理W/Q键的标注模式（转发给当前预览面板）
-        elif event.key() in [Qt.Key_W, Qt.Key_Q]:
+        # 处理W/Q键的标注模式(转发给当前预览面板)
+        elif a0.key() in [Qt.Key.Key_W, Qt.Key.Key_Q]:
             # 如果当前有预览面板且是图片预览面板，则转发按键事件
             if (self.current_preview_panel and
                 isinstance(self.current_preview_panel, ImagePreviewPanel)):
-                self.current_preview_panel.keyPressEvent(event)
+                self.current_preview_panel.keyPressEvent(a0)
             else:
-                super().keyPressEvent(event)
+                super().keyPressEvent(a0)
         else:
-            super().keyPressEvent(event)
+            super().keyPressEvent(a0)
 
     def delete_current_image(self):
         """
@@ -310,7 +341,6 @@ class PreviewPanel(QWidget):
         """
         # 发出切换到前一个资源的信号
         self.switch_to_previous.emit()
-        logger.info("切换到前一个资源")
 
     def switch_to_next_resource(self):
         """
@@ -318,4 +348,71 @@ class PreviewPanel(QWidget):
         """
         # 发出切换到后一个资源的信号
         self.switch_to_next.emit()
-        logger.info("切换到后一个资源")
+
+    def _add_to_cache(self, file_path, panel):
+        """
+        添加面板到缓存，超过最大缓存数时移除最旧的
+        
+        Args:
+            file_path (str): 文件路径
+            panel: 预览面板实例
+        """
+        # 如果缓存已满，移除最旧的项
+        if len(self.panel_cache) >= self.max_cache_size:
+            # 移除第一个项（最旧的）
+            oldest_key = next(iter(self.panel_cache))
+            old_panel = self.panel_cache.pop(oldest_key)
+            # 清理旧面板
+            if old_panel and not sip.isdeleted(old_panel):
+                old_panel.setParent(None)
+                old_panel.deleteLater()
+        
+        self.panel_cache[file_path] = panel
+
+    def clear_cache(self):
+        """
+        清除所有缓存的预览面板
+        """
+        for panel in self.panel_cache.values():
+            if panel and not sip.isdeleted(panel):
+                panel.setParent(None)
+                panel.deleteLater()
+        self.panel_cache.clear()
+
+    def cleanup_cache(self):
+        """
+        清理缓存中已删除的对象
+        """
+        # 创建一个新的字典，只包含有效的面板
+        valid_cache = {}
+        for file_path, panel in self.panel_cache.items():
+            if panel and not sip.isdeleted(panel):
+                valid_cache[file_path] = panel
+        self.panel_cache = valid_cache
+
+    def mousePressEvent(self, event):
+        """
+        处理鼠标点击事件，确保点击时获取焦点
+        
+        Args:
+            event: 鼠标事件
+        """
+        super().mousePressEvent(event)
+        # 确保点击后获取焦点
+        self.setFocus()
+        # 如果有当前预览面板，也给它设置焦点
+        if self.current_preview_panel:
+            self.current_preview_panel.setFocus()
+
+    def showEvent(self, event):
+        """
+        处理显示事件，确保显示时获取焦点
+        
+        Args:
+            event: 显示事件
+        """
+        super().showEvent(event)
+        # 显示时主动获取焦点
+        self.setFocus()
+        if self.current_preview_panel:
+            self.current_preview_panel.setFocus()

@@ -2,9 +2,9 @@ import os
 import json
 import xml.dom.minidom
 
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont, QTextCursor
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QMessageBox, QFileDialog, QHBoxLayout, QLabel
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont, QTextCursor
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QMessageBox, QFileDialog, QHBoxLayout, QLabel
 
 from src.logging_config import logger
 
@@ -68,7 +68,7 @@ class TextPreviewPanel(QWidget):
 
         # 创建文本编辑器
         self.text_edit = QTextEdit()
-        self.text_edit.setLineWrapMode(QTextEdit.NoWrap)  # 不自动换行
+        self.text_edit.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)  # 不自动换行
         
         # 设置字体
         font = QFont("Courier New", 12)
@@ -90,8 +90,18 @@ class TextPreviewPanel(QWidget):
         self.setLayout(layout)
 
         # 设置焦点策略，确保能接收键盘事件
-        self.setFocusPolicy(Qt.StrongFocus)
-        self.text_edit.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.text_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def set_fullscreen(self, fullscreen):
+        """
+        设置全屏模式(文本预览面板不需要特殊处理)
+        
+        Args:
+            fullscreen (bool): 是否进入全屏模式
+        """
+        # 文本预览面板不需要特殊处理全屏模式
+        pass
 
     def load_text_file(self, file_path):
         """
@@ -100,6 +110,21 @@ class TextPreviewPanel(QWidget):
         Args:
             file_path (str): 文件路径
         """
+        # 检查UI组件是否已正确初始化
+        if self.text_edit is None or self.title_label is None:
+            error_msg = "文本预览面板UI组件未正确初始化"
+            logger.error(error_msg)
+            # 尝试重新初始化UI
+            try:
+                self.init_ui()
+                if self.text_edit is None:
+                    QMessageBox.critical(self, "错误", "文本预览面板初始化失败，请重启应用")
+                    return False
+            except Exception as e:
+                logger.error(f"重新初始化UI失败: {e}", exc_info=True)
+                QMessageBox.critical(self, "错误", f"文本预览面板初始化失败: {str(e)}")
+                return False
+
         if not os.path.exists(file_path):
             self.show_message("文件不存在")
             return False
@@ -130,8 +155,9 @@ class TextPreviewPanel(QWidget):
                     formatted_content = json.dumps(parsed_json, indent=2, ensure_ascii=False)
                     self.text_edit.setPlainText(formatted_content)
                     self.original_content = formatted_content
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
                     # 如果JSON格式不正确，直接显示原始内容
+                    logger.error(f"JSON解析错误: {str(e)}")
                     self.text_edit.setPlainText(content)
             elif ext == '.xml':
                 try:
@@ -143,8 +169,9 @@ class TextPreviewPanel(QWidget):
                     formatted_content = '\n'.join(line for line in lines if line.strip())
                     self.text_edit.setPlainText(formatted_content)
                     self.original_content = formatted_content
-                except Exception:
+                except Exception as e:
                     # 如果XML格式不正确，直接显示原始内容
+                    logger.error(f"XML解析错误: {str(e)}")
                     self.text_edit.setPlainText(content)
             else:
                 # 其他文本文件直接显示
@@ -155,9 +182,8 @@ class TextPreviewPanel(QWidget):
             self.update_unsaved_indicator()
 
             # 将光标移到开头
-            self.text_edit.moveCursor(QTextCursor.Start)
+            self.text_edit.moveCursor(QTextCursor.MoveOperation.Start)
             
-            logger.info(f"文本文件加载成功: {file_path}")
             return True
         except Exception as e:
             error_msg = f"加载文件出错: {str(e)}"
@@ -203,9 +229,9 @@ class TextPreviewPanel(QWidget):
                     reply = QMessageBox.question(
                         self, "JSON格式错误", 
                         f"JSON格式有错误: {str(e)}\n是否仍要保存？",
-                        QMessageBox.Yes | QMessageBox.No
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                     )
-                    if reply == QMessageBox.No:
+                    if reply == QMessageBox.StandardButton.No:
                         return False
 
             # 保存文件
@@ -221,7 +247,6 @@ class TextPreviewPanel(QWidget):
             # 发出文件保存信号
             self.file_saved.emit(save_path)
             
-            logger.info(f"文本文件保存成功: {save_path}")
             return True
         except Exception as e:
             error_msg = f"保存文件出错: {str(e)}"
@@ -236,7 +261,11 @@ class TextPreviewPanel(QWidget):
         Args:
             message (str): 要显示的消息
         """
-        self.text_edit.setPlainText(message)
+        if self.text_edit is not None:
+            self.text_edit.setPlainText(message)
+        else:
+            # 如果text_edit未初始化，记录错误日志
+            logger.error("text_edit未初始化，无法显示消息: %s", message)
 
     def keyPressEvent(self, event):
         """
@@ -246,7 +275,7 @@ class TextPreviewPanel(QWidget):
             event: 键盘事件
         """
         # 处理Ctrl+S保存
-        if event.key() == Qt.Key_S and event.modifiers() == Qt.ControlModifier:
+        if event.key() == Qt.Key.Key_S and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             self.save_text_file()
         else:
             super().keyPressEvent(event)
@@ -289,14 +318,14 @@ class TextPreviewPanel(QWidget):
             reply = QMessageBox.question(
                 self, "文件未保存", 
                 f"文件 '{os.path.basename(self.current_file_path)}' 已被修改，是否保存更改？",
-                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
             )
             
-            if reply == QMessageBox.Yes:
+            if reply == QMessageBox.StandardButton.Yes:
                 if not self.save_text_file():
                     event.ignore()
                     return
-            elif reply == QMessageBox.Cancel:
+            elif reply == QMessageBox.StandardButton.Cancel:
                 event.ignore()
                 return
                 

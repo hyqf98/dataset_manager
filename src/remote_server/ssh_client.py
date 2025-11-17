@@ -1,7 +1,7 @@
 import paramiko
 import os
 from typing import List, Tuple, Optional
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal
 from .server_config import ServerConfig
 from ..logging_config import logger
 
@@ -51,7 +51,7 @@ class SSHClient(QObject):
                 # 使用密码认证
                 connect_kwargs['password'] = self.server_config.password
             else:
-                raise Exception("未提供有效的认证信息（密码或私钥）")
+                raise Exception("未提供有效的认证信息(密码或私钥)")
 
             # 连接服务器
             self.ssh_client.connect(**connect_kwargs)
@@ -168,7 +168,7 @@ class SSHClient(QObject):
             check_exists (bool): 是否检查文件是否存在
 
         Returns:
-            bool: 是否成功上传（True表示上传，False表示跳过）
+            bool: 是否成功上传(True表示上传，False表示跳过)
         """
         try:
             if not self.sftp_client:

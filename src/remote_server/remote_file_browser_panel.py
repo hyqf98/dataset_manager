@@ -1,12 +1,13 @@
 import os
 import tempfile
 from typing import Optional
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, 
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, 
                               QTreeWidgetItem, QHeaderView, QMessageBox, QLabel, QComboBox,
-                              QTextEdit, QDialog, QDialogButtonBox, QSplitter, QMenu, QAction,
+                              QTextEdit, QDialog, QDialogButtonBox, QSplitter, QMenu,
                               QInputDialog, QFileDialog)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QContextMenuEvent
+from PyQt6.QtGui import QAction
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QContextMenuEvent
 from .server_config import ServerConfig, ServerConfigManager
 from .ssh_client import SSHClient
 from ..logging_config import logger
@@ -77,7 +78,7 @@ class RemoteFileSaveWorker(QThread):
                 temp_path = temp_file.name
                 temp_file.write(self.content)
                 
-            # 上传文件到远程服务器（强制覆盖，不检查文件是否存在）
+            # 上传文件到远程服务器(强制覆盖，不检查文件是否存在)
             self.ssh_client.upload_file(temp_path, self.remote_path, check_exists=False)
             
             # 删除临时文件
@@ -223,7 +224,7 @@ class RemoteFileEditorDialog(QDialog):
         self.save_btn.setEnabled(self.is_modified)
         
         if self.is_modified:
-            self.status_label.setText("文件已修改（未保存）")
+            self.status_label.setText("文件已修改(未保存)")
         else:
             self.status_label.setText("")
             
@@ -273,7 +274,7 @@ class RemoteFileEditorDialog(QDialog):
                 self, 
                 "确认", 
                 "文件已修改但未保存，确定要关闭吗？",
-                QMessageBox.Yes | QMessageBox.No  # type: ignore
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No  # type: ignore
             )
             if reply == QMessageBox.StandardButton.Yes:
                 self.reject()
@@ -447,7 +448,7 @@ class RemoteFileBrowserPanel(QWidget):
         servers = self.server_manager.get_server_configs()
         
         if not servers:
-            self.server_combo.addItem("（没有配置的服务器）")
+            self.server_combo.addItem("(没有配置的服务器)")
             self.connect_btn.setEnabled(False)
             return
             
@@ -465,7 +466,7 @@ class RemoteFileBrowserPanel(QWidget):
                 self,
                 "确认",
                 "切换服务器将断开当前连接，是否继续？",
-                QMessageBox.Yes | QMessageBox.No  # type: ignore
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No  # type: ignore
             )
             if reply == QMessageBox.StandardButton.Yes:
                 self.disconnect_from_server()
@@ -898,10 +899,10 @@ class RemoteFileBrowserPanel(QWidget):
             self,
             "确认删除",
             f"确定要删除{item_type} '{item_name}' 吗？\n\n此操作不可恢复！",
-            QMessageBox.Yes | QMessageBox.No  # type: ignore
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No  # type: ignore
         )
         
-        if reply != QMessageBox.Yes:
+        if reply != QMessageBox.StandardButton.Yes:
             return
             
         try:

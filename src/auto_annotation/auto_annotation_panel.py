@@ -5,9 +5,9 @@ import cv2
 import json
 from enum import Enum
 from typing import Optional
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem, QDialog, QFormLayout, \
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem, QDialog, QFormLayout, \
     QComboBox, QLineEdit, QMessageBox, QTextEdit, QCheckBox, QFileDialog, QProgressBar, QLabel, QDialogButtonBox, QHBoxLayout
-from PyQt5.QtCore import pyqtSignal, QThread, pyqtSlot, Qt
+from PyQt6.QtCore import pyqtSignal, QThread, pyqtSlot, Qt
 from ..logging_config import logger
 from .model_config_panel import ModelConfigManager, AnnotationType
 
@@ -17,7 +17,7 @@ class AnnotationTask:
     自动标注任务类
     """
 
-    def __init__(self, id: int, model_config_id: int, dataset_path: str, 
+    def __init__(self, id: int, model_config_id: int, dataset_path: str,
                  status: str = "未开始", progress: int = 0, total_files: int = 0, processed_files: int = 0,
                  error_message: str = ""):
         self.id = id
@@ -43,7 +43,7 @@ class AnnotationTaskManager:
             # 确保目录存在
             os.makedirs(dataset_manager_dir, exist_ok=True)
             self.tasks_file = os.path.join(dataset_manager_dir, "annotation_tasks.json")
-            
+
             # 检查并移动旧的配置文件
             old_tasks_file = "annotation_tasks.json"
             if os.path.exists(old_tasks_file) and not os.path.exists(self.tasks_file):
@@ -99,7 +99,7 @@ class AnnotationTaskManager:
         try:
             # 确保目录存在
             os.makedirs(os.path.dirname(self.tasks_file), exist_ok=True)
-            
+
             data = []
             for task in self.tasks:
                 task_data = {
@@ -116,7 +116,6 @@ class AnnotationTaskManager:
 
             with open(self.tasks_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            logger.info(f"保存了 {len(self.tasks)} 个标注任务到配置文件")
         except Exception as e:
             logger.error(f"保存标注任务时出错: {e}")
             QMessageBox.critical(None, "错误", f"保存标注任务时出错: {e}")
@@ -192,7 +191,7 @@ class AnnotationTaskForm(QDialog):
         layout.addRow("", self.dataset_path_button)
 
         # 添加按钮
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
@@ -209,7 +208,7 @@ class AnnotationTaskForm(QDialog):
         """
         获取表单中的任务对象
         """
-        if self.result() == QDialog.Accepted:
+        if self.result() == QDialog.DialogCode.Accepted:
             model_config_id = self.model_combo.currentData()
             dataset_path = self.dataset_path_edit.text()
 
@@ -253,7 +252,7 @@ class AnnotationWorker(QThread):
             image_files = self.get_image_files(self.task.dataset_path)
             self.task.total_files = len(image_files)
             self.task.processed_files = 0
-            
+
             # 发送任务数据更新信号
             self.task_data_updated.emit(self.task.id, self.task.processed_files, self.task.total_files)
 
@@ -290,7 +289,7 @@ class AnnotationWorker(QThread):
 
     def get_image_files(self, dataset_path):
         """
-        获取数据集中的所有图片文件（问题4修复：过滤delete文件夹）
+        获取数据集中的所有图片文件(问题4修复：过滤delete文件夹)
         """
         image_files = []
         for root, dirs, files in os.walk(dataset_path):
@@ -334,11 +333,11 @@ class AnnotationWorker(QThread):
 
             # 获取模型路径
             model_path = self.model_config.yolo_model_name
-            
+
             # 如果模型路径是预定义的模型名称，则使用缓存路径
             predefined_models = ["yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8l.pt", "yolov8x.pt",
                                "yolov8s-world.pt", "yolov8s-worldv2.pt", "yolov8m-world.pt", "yolov8m-worldv2.pt"]
-            
+
             if model_path in predefined_models:
                 # 使用用户目录下的.dataset_m/models路径
                 user_home = os.path.expanduser("~")
@@ -351,7 +350,7 @@ class AnnotationWorker(QThread):
             if not os.path.exists(model_path):
                 self.log_message.emit(f"模型文件不存在，将自动下载: {model_path}")
 
-            # 检查是否是YOLO-World模型（文件名包含world）
+            # 检查是否是YOLO-World模型(文件名包含world)
             if "world" in os.path.basename(model_path).lower():
                 # 使用YOLO-World模型
                 model = YOLOWorld(model_path)
@@ -432,7 +431,7 @@ class AnnotationWorker(QThread):
                             # 写入YOLO格式: class_id x_center y_center width height
                             f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
 
-            # 生成classes.txt文件（如果配置了分类）
+            # 生成classes.txt文件(如果配置了分类)
             classes_to_write = []
             if hasattr(self.model_config, 'yolo_classes') and self.model_config.yolo_classes:
                 classes_to_write = self.model_config.yolo_classes
@@ -561,7 +560,7 @@ class AnnotationWorker(QThread):
                                 # 跳过无效行
                                 continue
 
-            # 生成classes.txt文件（如果配置了分类）
+            # 生成classes.txt文件(如果配置了分类)
             if self.model_config.yolo_classes:
                 classes_file = os.path.join(labels_dir, 'classes.txt')
                 with open(classes_file, 'w') as f:
@@ -718,16 +717,16 @@ class AutoAnnotationPanel(QWidget):
             else:
                 progress_text = "0%"
             item.setText(4, progress_text)
-            
+
             # 显示处理数据
             process_data_text = f"{task.processed_files}/{task.total_files}"
             item.setText(5, process_data_text)
-            
+
             # 显示异常信息
             item.setText(6, getattr(task, 'error_message', ''))
 
-            item.setData(0, Qt.UserRole, task.id)
-            
+            item.setData(0, Qt.ItemDataRole.UserRole, task.id)
+
             # 添加操作按钮
             self.add_action_buttons(item, task.id, task.status)
 
@@ -743,7 +742,7 @@ class AutoAnnotationPanel(QWidget):
             return
 
         form = AnnotationTaskForm(self)
-        if form.exec_() == QDialog.Accepted:
+        if form.exec() == QDialog.DialogCode.Accepted:
             task = form.get_task()
             if task:
                 self.manager.add_task(task)
@@ -813,7 +812,7 @@ class AutoAnnotationPanel(QWidget):
         self.refresh_tasks()
 
         logger.info(f"开始标注任务: {task_id}")
-        
+
     def get_image_files(self, dataset_path):
         """
         获取数据集中的所有图片文件
@@ -855,9 +854,9 @@ class AutoAnnotationPanel(QWidget):
         删除标注任务
         """
         reply = QMessageBox.question(self, "确认", "确定要删除选中的标注任务吗?\n注意：这不会删除已生成的标注文件。",
-                                     QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            # 停止任务（如果正在进行）
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            # 停止任务(如果正在进行)
             if task_id in self.workers:
                 self.stop_task(task_id)
 
@@ -866,7 +865,7 @@ class AutoAnnotationPanel(QWidget):
 
     def update_task_data(self, task_id, processed_files, total_files):
         """
-        更新任务数据（由Worker线程调用）
+        更新任务数据(由Worker线程调用)
         """
         # 更新内存中的任务数据
         for task in self.manager.get_tasks():
@@ -887,7 +886,7 @@ class AutoAnnotationPanel(QWidget):
                 task.total_files = total
                 self.manager.update_task(task)  # 持久化更新
                 break
-        
+
         # 更新UI中的进度显示
         for i in range(self.task_tree.topLevelItemCount()):
             item = self.task_tree.topLevelItem(i)
@@ -935,14 +934,14 @@ class AutoAnnotationPanel(QWidget):
                 task.error_message = error_message
                 self.manager.update_task(task)  # 持久化更新
                 break
-        
+
         # 停止并清理工作线程
         if task_id in self.workers:
             worker = self.workers[task_id]
             worker.quit()
             worker.wait()
             del self.workers[task_id]
-        
+
         self.refresh_tasks()
         logger.info(f"标注任务 {task_id} 出错: {error_message}")
 
@@ -951,7 +950,7 @@ class AutoAnnotationPanel(QWidget):
         处理日志消息
         """
         logger.info(f"[自动标注] {message}")
-        
+
         # 如果日志消息包含错误信息，更新任务的错误信息显示
         if "出错:" in message or "错误:" in message:
             # 提取任务ID和错误信息
@@ -976,7 +975,7 @@ class AutoAnnotationPanel(QWidget):
     def add_action_buttons(self, item, task_id, task_status):
         """
         为指定项添加操作按钮
-        
+
         Args:
             item: 树形控件项
             task_id: 任务ID
@@ -987,7 +986,7 @@ class AutoAnnotationPanel(QWidget):
         button_layout = QHBoxLayout(button_widget)
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(2)
-        
+
         # 根据任务状态添加开始/停止按钮
         if task_status in ["未开始", "已停止", "错误"]:
             # 开始按钮
@@ -1025,7 +1024,7 @@ class AutoAnnotationPanel(QWidget):
             """)
             stop_btn.clicked.connect(lambda: self.stop_task(task_id))
             button_layout.addWidget(stop_btn)
-        
+
         # 删除按钮
         delete_btn = QPushButton("删除")
         delete_btn.setStyleSheet("""
@@ -1043,6 +1042,6 @@ class AutoAnnotationPanel(QWidget):
         """)
         delete_btn.clicked.connect(lambda: self.delete_task(task_id))
         button_layout.addWidget(delete_btn)
-        
-        # 将按钮容器设置为项的第8列（操作列）
+
+        # 将按钮容器设置为项的第8列(操作列)
         self.task_tree.setItemWidget(item, 7, button_widget)

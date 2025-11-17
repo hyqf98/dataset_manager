@@ -1,5 +1,5 @@
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem, QMessageBox
-from PyQt5.QtCore import Qt, QDir
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem, QMessageBox
+from PyQt6.QtCore import Qt, QDir
 import os
 import shutil
 import json
@@ -7,13 +7,10 @@ from ..logging_config import logger
 
 
 class RecycleBinDialog(QDialog):
-    """
-    回收站对话框类，用于管理和操作回收站中的文件
-    """
+    """回收站对话框类，用于管理和操作回收站中的文件"""
 
     def __init__(self, recycle_bin_path, parent=None):
-        """
-        初始化回收站对话框
+        """初始化回收站对话框
         
         Args:
             recycle_bin_path (str): 回收站路径
@@ -26,9 +23,7 @@ class RecycleBinDialog(QDialog):
         logger.debug(f"初始化回收站对话框: {recycle_bin_path}")
 
     def init_ui(self):
-        """
-        初始化回收站对话框界面
-        """
+        """初始化回收站对话框界面"""
         self.setWindowTitle("回收站")
         self.setGeometry(200, 200, 600, 400)
 
@@ -72,9 +67,7 @@ class RecycleBinDialog(QDialog):
         self.setLayout(layout)
 
     def load_recycle_bin_contents(self):
-        """
-        加载回收站中的文件列表
-        """
+        """加载回收站中的文件列表"""
         self.file_tree.clear()
         
         if not os.path.exists(self.recycle_bin_path):
@@ -90,8 +83,7 @@ class RecycleBinDialog(QDialog):
             logger.error(f"加载回收站内容失败: {str(e)}", exc_info=True)
 
     def find_and_load_recycle_bins(self, root_path):
-        """
-        递归查找并加载所有回收站文件
+        """递归查找并加载所有回收站文件
         
         Args:
             root_path (str): 根路径
@@ -121,17 +113,17 @@ class RecycleBinDialog(QDialog):
                     tree_item.setText(3, self.format_time(mtime))
                     
                     # 保存完整路径作为数据
-                    tree_item.setData(0, Qt.UserRole, item_path)
+                    tree_item.setData(0, Qt.ItemDataRole.UserRole, item_path)
                     
                     # 保存所在回收站路径，用于还原操作
-                    tree_item.setData(0, Qt.UserRole + 1, root_path)
+                    tree_item.setData(0, Qt.ItemDataRole.UserRole + 1, root_path)
             
             # 递归查找子目录中的delete文件夹
             for root, dirs, files in os.walk(root_path):
                 for dir_name in dirs:
                     if dir_name == "delete":
                         delete_path = os.path.join(root, dir_name)
-                        # 确保不是当前根目录下的delete文件夹（已经处理过了）
+                        # 确保不是当前根目录下的delete文件夹(已经处理过了)
                         if delete_path != self.recycle_bin_path:
                             # 为子回收站创建一个分组项
                             group_item = QTreeWidgetItem(self.file_tree)
@@ -162,17 +154,16 @@ class RecycleBinDialog(QDialog):
                                     tree_item.setText(3, self.format_time(mtime))
                                     
                                     # 保存完整路径作为数据
-                                    tree_item.setData(0, Qt.UserRole, item_path)
+                                    tree_item.setData(0, Qt.ItemDataRole.UserRole, item_path)
                                     
                                     # 保存所在回收站路径，用于还原操作
-                                    tree_item.setData(0, Qt.UserRole + 1, delete_path)
+                                    tree_item.setData(0, Qt.ItemDataRole.UserRole + 1, delete_path)
         except Exception as e:
             QMessageBox.critical(self, "错误", f"查找回收站内容失败: {str(e)}")
             logger.error(f"查找回收站内容失败: {str(e)}", exc_info=True)
 
     def extract_original_path(self, filename):
-        """
-        从文件名中提取原始路径信息
+        """从文件名中提取原始路径信息
         
         Args:
             filename (str): 回收站中的文件名
@@ -215,9 +206,7 @@ class RecycleBinDialog(QDialog):
         return None
 
     def restore_selected(self):
-        """
-        还原选中的文件
-        """
+        """还原选中的文件"""
         selected_items = self.file_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "提示", "请先选择要还原的文件!")
@@ -226,9 +215,9 @@ class RecycleBinDialog(QDialog):
             
         restored_count = 0
         for item in selected_items:
-            file_path = item.data(0, Qt.UserRole)
+            file_path = item.data(0, Qt.ItemDataRole.UserRole)
             # 获取该文件所在的回收站路径
-            recycle_bin_path = item.data(0, Qt.UserRole + 1) or self.recycle_bin_path
+            recycle_bin_path = item.data(0, Qt.ItemDataRole.UserRole + 1) or self.recycle_bin_path
             if self.restore_file(file_path, recycle_bin_path):
                 # 从列表中移除
                 index = self.file_tree.indexOfTopLevelItem(item)
@@ -244,9 +233,7 @@ class RecycleBinDialog(QDialog):
         logger.info(f"还原 {restored_count} 个文件")
 
     def restore_all(self):
-        """
-        还原所有文件
-        """
+        """还原所有文件"""
         root = self.file_tree.invisibleRootItem()
         count = root.childCount()
         
@@ -256,15 +243,15 @@ class RecycleBinDialog(QDialog):
             return
             
         reply = QMessageBox.question(self, "确认", f"确定要还原全部 {count} 个文件吗?",
-                                     QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
             restored_count = 0
             # 从后往前删除避免索引变化问题
             for i in range(count - 1, -1, -1):
                 item = root.child(i)
-                file_path = item.data(0, Qt.UserRole)
+                file_path = item.data(0, Qt.ItemDataRole.UserRole)
                 # 获取该文件所在的回收站路径
-                recycle_bin_path = item.data(0, Qt.UserRole + 1) or self.recycle_bin_path
+                recycle_bin_path = item.data(0, Qt.ItemDataRole.UserRole + 1) or self.recycle_bin_path
                 if self.restore_file(file_path, recycle_bin_path):
                     self.file_tree.takeTopLevelItem(i)
                     restored_count += 1
@@ -272,8 +259,7 @@ class RecycleBinDialog(QDialog):
             logger.info(f"还原全部 {restored_count} 个文件")
 
     def restore_file(self, file_path, recycle_bin_path=None):
-        """
-        还原单个文件到原始位置
+        """还原单个文件到原始位置
         
         Args:
             file_path (str): 要还原的文件路径
@@ -292,7 +278,7 @@ class RecycleBinDialog(QDialog):
             # 尝试获取原始路径
             original_path = self.extract_original_path(filename)
             
-            # 如果没有原始路径信息，则使用默认还原路径（回收站的上级目录）
+            # 如果没有原始路径信息，则使用默认还原路径(回收站的上级目录)
             if not original_path:
                 parent_dir = os.path.dirname(recycle_bin_path)  # 回收站的上级目录
                 original_path = os.path.join(parent_dir, filename)
@@ -328,8 +314,7 @@ class RecycleBinDialog(QDialog):
             return False
 
     def remove_from_metadata(self, recycle_bin_path, filename):
-        """
-        从元数据文件中移除指定文件的记录
+        """从元数据文件中移除指定文件的记录
         
         Args:
             recycle_bin_path (str): 回收站路径
@@ -359,9 +344,7 @@ class RecycleBinDialog(QDialog):
             logger.error(f"从元数据文件中移除记录失败: {e}", exc_info=True)
 
     def delete_selected(self):
-        """
-        彻底删除选中的文件
-        """
+        """彻底删除选中的文件"""
         selected_items = self.file_tree.selectedItems()
         if not selected_items:
             QMessageBox.information(self, "提示", "请先选择要删除的文件!")
@@ -369,12 +352,12 @@ class RecycleBinDialog(QDialog):
             return
             
         reply = QMessageBox.question(self, "确认", f"确定要彻底删除选中的 {len(selected_items)} 个文件吗?\n此操作不可恢复!",
-                                     QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
             deleted_count = 0
             for item in selected_items:
-                file_path = item.data(0, Qt.UserRole)
-                recycle_bin_path = item.data(0, Qt.UserRole + 1) or self.recycle_bin_path
+                file_path = item.data(0, Qt.ItemDataRole.UserRole)
+                recycle_bin_path = item.data(0, Qt.ItemDataRole.UserRole + 1) or self.recycle_bin_path
                 if self.delete_file(file_path):
                     # 从列表中移除
                     index = self.file_tree.indexOfTopLevelItem(item)
@@ -390,12 +373,10 @@ class RecycleBinDialog(QDialog):
             logger.info(f"彻底删除 {deleted_count} 个文件")
 
     def delete_all(self):
-        """
-        清空回收站（删除所有delete文件夹）
-        """
+        """清空回收站(删除所有delete文件夹)"""
         reply = QMessageBox.question(self, "确认", "确定要清空回收站吗?\n此操作不可恢复!",
-                                     QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
             try:
                 # 删除所有delete文件夹
                 if os.path.exists(self.recycle_bin_path):
@@ -418,8 +399,7 @@ class RecycleBinDialog(QDialog):
                 logger.error(f"清空回收站失败: {str(e)}", exc_info=True)
 
     def delete_file(self, file_path):
-        """
-        彻底删除单个文件
+        """彻底删除单个文件
         
         Args:
             file_path (str): 要删除的文件路径
@@ -444,8 +424,7 @@ class RecycleBinDialog(QDialog):
             return False
 
     def cleanup_empty_recycle_bin(self, recycle_bin_path):
-        """
-        清理空的回收站目录
+        """清理空的回收站目录
         
         Args:
             recycle_bin_path (str): 回收站路径
@@ -459,14 +438,14 @@ class RecycleBinDialog(QDialog):
             if not os.path.basename(recycle_bin_path) == "delete":
                 return
                 
-            # 检查目录是否为空（忽略.meta.json文件）
+            # 检查目录是否为空(忽略.meta.json文件)
             items = os.listdir(recycle_bin_path)
             # 过滤掉.meta.json文件
             items = [item for item in items if item != ".meta.json"]
             
             # 如果目录为空，则删除该目录和元数据文件
             if not items:
-                # 删除元数据文件（如果存在）
+                # 删除元数据文件(如果存在)
                 metadata_file = os.path.join(recycle_bin_path, ".meta.json")
                 if os.path.exists(metadata_file):
                     os.remove(metadata_file)
@@ -479,11 +458,10 @@ class RecycleBinDialog(QDialog):
             logger.error(f"清理空回收站目录时出错: {e}", exc_info=True)
 
     def format_size(self, size):
-        """
-        格式化文件大小显示
+        """格式化文件大小显示
         
         Args:
-            size (int): 文件大小（字节）
+            size (int): 文件大小(字节)
             
         Returns:
             str: 格式化后的大小字符串
@@ -495,8 +473,7 @@ class RecycleBinDialog(QDialog):
         return f"{size:.1f} TB"
 
     def format_time(self, timestamp):
-        """
-        格式化时间显示
+        """格式化时间显示
         
         Args:
             timestamp (float): 时间戳

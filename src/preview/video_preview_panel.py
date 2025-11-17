@@ -1,10 +1,10 @@
 import os
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QSlider, QLabel, QSizePolicy, QGraphicsView, QGraphicsScene, QSplitter, QListWidget, QListWidgetItem, QInputDialog
-from PyQt5.QtCore import Qt, QTimer, QUrl, QEvent, QRectF, QSizeF, pyqtSignal
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-from PyQt5.QtMultimediaWidgets import QGraphicsVideoItem
-from PyQt5.QtGui import QPixmap, QIcon
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QSlider, QLabel, QSizePolicy, QGraphicsView, QGraphicsScene, QSplitter, QListWidget, QListWidgetItem, QInputDialog
+from PyQt6.QtCore import Qt, QTimer, QUrl, QEvent, QRectF, QSizeF, pyqtSignal
+from PyQt6.QtMultimedia import QMediaPlayer
+from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
+from PyQt6.QtGui import QPixmap, QIcon
 import cv2
 from src.logging_config import logger
 
@@ -46,7 +46,29 @@ class VideoPreviewPanel(QWidget):
         self.is_playing = False
 
         # 设置焦点策略，确保能接收键盘事件
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def mousePressEvent(self, event):
+        """
+        处理鼠标点击事件，确保点击时获取焦点
+        
+        Args:
+            event: 鼠标事件
+        """
+        super().mousePressEvent(event)
+        # 确保点击后获取焦点
+        self.setFocus()
+
+    def showEvent(self, event):
+        """
+        处理显示事件，确保显示时获取焦点
+        
+        Args:
+            event: 显示事件
+        """
+        super().showEvent(event)
+        # 显示时主动获取焦点
+        self.setFocus()
 
     def init_ui(self):
         """
@@ -56,7 +78,7 @@ class VideoPreviewPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         # 创建主分割器
-        self.main_splitter = QSplitter(Qt.Horizontal)
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # 左侧视频播放区域
         self.video_container = QWidget()
@@ -64,20 +86,20 @@ class VideoPreviewPanel(QWidget):
         video_layout.setContentsMargins(0, 0, 0, 0)
 
         # 设置视频播放器的策略，使其能够扩展填充可用空间
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.video_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.video_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.video_view.setMinimumSize(1, 1)  # 设置最小尺寸以确保显示
 
         # 隐藏滚动条
-        self.video_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.video_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.video_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.video_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         # 设置视频视图的对齐方式为居中
-        self.video_view.setAlignment(Qt.AlignCenter)
+        self.video_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # 创建工具栏
         self.toolbar = QHBoxLayout()
-        self.toolbar.setAlignment(Qt.AlignLeft)
+        self.toolbar.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.toolbar.setSpacing(5)
         self.toolbar.setContentsMargins(5, 5, 5, 5)  # 添加边距，避免按钮紧贴边框
 
@@ -100,7 +122,6 @@ class VideoPreviewPanel(QWidget):
                 background-color: rgba(0, 0, 0, 180);
                 border-radius: 5px;
                 padding: 5px;
-            }
         """)
         self.control_container.setParent(self.video_view)
         self.control_container.move(0, 0)  # 初始位置，会在resizeEvent中调整
@@ -137,7 +158,7 @@ class VideoPreviewPanel(QWidget):
         self.auto_capture_btn.clicked.connect(self.toggle_auto_capture)
         self.auto_capture_btn.setStyleSheet("QPushButton { color: white; border: none; padding: 5px; }")
 
-        self.time_slider = QSlider(Qt.Horizontal)
+        self.time_slider = QSlider(Qt.Orientation.Horizontal)
         self.time_slider.setRange(0, 0)
         self.time_slider.sliderMoved.connect(self.set_position)
         self.time_slider.setStyleSheet("""
@@ -145,18 +166,15 @@ class VideoPreviewPanel(QWidget):
                 height: 6px;
                 background: #ddd;
                 border-radius: 3px;
-            }
             QSlider::handle:horizontal {
                 background: white;
                 border: 1px solid #ddd;
                 width: 12px;
                 margin: -4px 0;
                 border-radius: 6px;
-            }
             QSlider::sub-page:horizontal {
                 background: #4CAF50;
                 border-radius: 3px;
-            }
         """)
 
         self.time_label = QLabel("00:00 / 00:00")
@@ -180,12 +198,12 @@ class VideoPreviewPanel(QWidget):
         thumbnail_layout.setContentsMargins(0, 0, 0, 0)
 
         self.thumbnail_list_widget = QListWidget()
-        self.thumbnail_list_widget.setSelectionMode(QListWidget.ExtendedSelection)
-        self.thumbnail_list_widget.setResizeMode(QListWidget.Adjust)
-        self.thumbnail_list_widget.setViewMode(QListWidget.IconMode)
+        self.thumbnail_list_widget.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        self.thumbnail_list_widget.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.thumbnail_list_widget.setViewMode(QListWidget.ViewMode.IconMode)
         self.thumbnail_list_widget.setIconSize(QSizeF(120, 90).toSize())
         self.thumbnail_list_widget.setSpacing(5)
-        self.thumbnail_list_widget.setMovement(QListWidget.Static)
+        self.thumbnail_list_widget.setMovement(QListWidget.Movement.Static)
 
         thumbnail_layout.addWidget(QLabel("抽帧图片:"))
         thumbnail_layout.addWidget(self.thumbnail_list_widget)
@@ -210,16 +228,20 @@ class VideoPreviewPanel(QWidget):
         self.is_fullscreen = fullscreen
         if fullscreen:
             # 隐藏抽帧图片列表和分割器手柄
-            self.thumbnail_list.setVisible(False)
-            self.main_splitter.handle(1).setVisible(False)
+            if self.thumbnail_list:
+                self.thumbnail_list.setVisible(False)
+            if self.main_splitter and self.main_splitter.handle(1):
+                self.main_splitter.handle(1).setVisible(False)
             # 设置分割器的大小，只显示视频部分
             self.main_splitter.setSizes([self.main_splitter.width(), 0])
             # 更新按钮文本
             self.fullscreen_btn.setText("❐ 退出全屏")
         else:
             # 恢复抽帧图片列表和分割器手柄
-            self.thumbnail_list.setVisible(True)
-            self.main_splitter.handle(1).setVisible(True)
+            if self.thumbnail_list:
+                self.thumbnail_list.setVisible(True)
+            if self.main_splitter and self.main_splitter.handle(1):
+                self.main_splitter.handle(1).setVisible(True)
             # 恢复正常的分割器大小
             self.main_splitter.setSizes([800, 200])
             # 更新按钮文本
@@ -236,30 +258,29 @@ class VideoPreviewPanel(QWidget):
         设置媒体播放器
         """
         # 连接媒体播放器信号
-        self.media_player.stateChanged.connect(self.media_state_changed)
+        self.media_player.playbackStateChanged.connect(self.media_state_changed)
         self.media_player.positionChanged.connect(self.position_changed)
         self.media_player.durationChanged.connect(self.duration_changed)
         # 连接视频大小变化信号
         self.video_item.nativeSizeChanged.connect(self.video_native_size_changed)
 
         # 设置视频填充模式，确保视频能够充满显示区域
-        self.video_item.setAspectRatioMode(Qt.KeepAspectRatio)
-        self.video_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.video_item.setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+        self.video_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.video_view.setMinimumSize(1, 1)
 
         # 确保视频控件可以获取焦点以接收按键事件
-        self.video_view.setFocusPolicy(Qt.StrongFocus)
-        self.video_view.viewport().setFocusPolicy(Qt.StrongFocus)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.video_view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         # 设置场景的对齐方式
-        self.video_view.setAlignment(Qt.AlignCenter)
+        self.video_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-    def resizeEvent(self, event):
+    def resizeEvent(self, a0):
         """
         处理窗口大小调整事件
         """
-        super().resizeEvent(event)
+        super().resizeEvent(a0)
 
         view_rect = self.video_view.rect()
         self.scene.setSceneRect(QRectF(view_rect))
@@ -299,7 +320,7 @@ class VideoPreviewPanel(QWidget):
             view_rect = self.video_view.rect()
             # 修复：将QSize转换为QSizeF以匹配scaled方法的参数要求
             view_size = QSizeF(view_rect.size())
-            scaled_size = size.scaled(view_size, Qt.KeepAspectRatio)
+            scaled_size = size.scaled(view_size, Qt.AspectRatioMode.KeepAspectRatio)
             self.video_item.setSize(scaled_size)
 
             # 重新居中场景
@@ -309,9 +330,9 @@ class VideoPreviewPanel(QWidget):
             self.scene.setSceneRect(QRectF(0, 0, max(1, view_rect.width()), max(1, view_rect.height())))
 
             # 确保视频视图居中对齐
-            self.video_view.setAlignment(Qt.AlignCenter)
+            self.video_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
             # 确保视频项在场景中居中
-            if not self.media_player.state() == QMediaPlayer.StoppedState:
+            if not self.media_player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
                 self.video_item.setPos(
                     (view_rect.width() - scaled_size.width()) / 2,
                     (view_rect.height() - scaled_size.height()) / 2
@@ -334,12 +355,9 @@ class VideoPreviewPanel(QWidget):
         """
         if os.path.exists(file_path):
             self.current_file_path = file_path
-            media_content = QMediaContent(QUrl.fromLocalFile(file_path))
-            self.media_player.setMedia(media_content)
+            self.media_player.setSource(QUrl.fromLocalFile(file_path))
             self.play_btn.setEnabled(True)
             self.time_label.setText("00:00 / 00:00")
-            # 记录日志
-            logger.info(f"设置视频媒体文件: {file_path}")
             # 自动播放视频
             self.media_player.play()
             # 显示控制容器
@@ -347,7 +365,7 @@ class VideoPreviewPanel(QWidget):
             # 确保视频居中显示
             self.video_view.centerOn(self.scene.sceneRect().center())
             # 确保视频视图居中对齐
-            self.video_view.setAlignment(Qt.AlignCenter)
+            self.video_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             # 清空抽帧列表
             self.thumbnail_list_widget.clear()
@@ -359,7 +377,7 @@ class VideoPreviewPanel(QWidget):
             # 文件不存在时显示错误信息
             self.scene.clear()
             error_label = QLabel(f"视频文件不存在: {file_path}")
-            error_label.setAlignment(Qt.AlignCenter)
+            error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             error_label.setStyleSheet("QLabel { color: red; font-weight: bold; }")
             self.scene.addWidget(error_label)
             self.play_btn.setEnabled(False)
@@ -370,12 +388,10 @@ class VideoPreviewPanel(QWidget):
         """
         播放/暂停切换
         """
-        if self.media_player.state() == QMediaPlayer.PlayingState:
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.media_player.pause()
-            logger.info("视频暂停播放")
         else:
             self.media_player.play()
-            logger.info("视频开始播放")
 
     def stop(self):
         """
@@ -385,7 +401,6 @@ class VideoPreviewPanel(QWidget):
         self.media_player.setPosition(1000)
         # 暂停播放而不是停止播放，以保持视频显示
         self.media_player.pause()
-        logger.info("视频停止播放并定位到第1秒")
 
     def fast_forward(self):
         """
@@ -394,7 +409,6 @@ class VideoPreviewPanel(QWidget):
         current_position = self.media_player.position()
         new_position = min(current_position + 10000, self.media_player.duration())  # 快进10秒
         self.media_player.setPosition(new_position)
-        logger.info(f"视频快进到位置: {new_position}ms")
 
     def fast_backward(self):
         """
@@ -403,14 +417,13 @@ class VideoPreviewPanel(QWidget):
         current_position = self.media_player.position()
         new_position = max(current_position - 10000, 0)  # 快退10秒
         self.media_player.setPosition(new_position)
-        logger.info(f"视频快退到位置: {new_position}ms")
 
     def set_position(self, position):
         """
         设置播放位置
 
         Args:
-            position (int): 位置（毫秒）
+            position (int): 位置(毫秒)
         """
         self.media_player.setPosition(position)
 
@@ -421,7 +434,7 @@ class VideoPreviewPanel(QWidget):
         Args:
             state: 媒体播放器状态
         """
-        if self.media_player.state() == QMediaPlayer.PlayingState:
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.play_btn.setText("⏸ 暂停")
         else:
             self.play_btn.setText("▶ 播放")
@@ -431,7 +444,7 @@ class VideoPreviewPanel(QWidget):
         播放位置改变事件处理
 
         Args:
-            position (int): 当前位置（毫秒）
+            position (int): 当前位置(毫秒)
         """
         self.time_slider.setValue(position)
         self.update_time_label(position, self.media_player.duration())
@@ -441,7 +454,7 @@ class VideoPreviewPanel(QWidget):
         媒体时长改变事件处理
 
         Args:
-            duration (int): 总时长（毫秒）
+            duration (int): 总时长(毫秒)
         """
         self.time_slider.setRange(0, duration)
         self.update_time_label(self.media_player.position(), duration)
@@ -451,8 +464,8 @@ class VideoPreviewPanel(QWidget):
         更新时间标签显示
 
         Args:
-            position (int): 当前位置（毫秒）
-            duration (int): 总时长（毫秒）
+            position (int): 当前位置(毫秒)
+            duration (int): 总时长(毫秒)
         """
         position_str = self.format_time(position)
         duration_str = self.format_time(duration)
@@ -501,7 +514,6 @@ class VideoPreviewPanel(QWidget):
 
         if ret:
             cv2.imwrite(frame_path, frame)
-            logger.info(f"帧已保存: {frame_path}")
 
             # 添加到抽帧列表
             self.add_frame_to_list(frame_path)
@@ -519,7 +531,7 @@ class VideoPreviewPanel(QWidget):
         """
         # 创建列表项
         item = QListWidgetItem()
-        item.setData(Qt.UserRole, frame_path)
+        item.setData(Qt.ItemDataRole.UserRole, frame_path)
 
         # 设置图标
         pixmap = QPixmap(frame_path)
@@ -546,14 +558,12 @@ class VideoPreviewPanel(QWidget):
                 # 启动自动抽帧定时器
                 self.auto_capture_timer.start(self.auto_capture_interval * 1000)  # 转换为毫秒
                 self.auto_capture_btn.setText("⏹ 停止自动抽帧")
-                logger.info(f"启动自动抽帧，间隔: {self.auto_capture_interval}秒")
             else:
                 self.auto_capture_btn.setChecked(False)
         else:
             # 停止自动抽帧
             self.auto_capture_timer.stop()
             self.auto_capture_btn.setText("🔁 自动抽帧")
-            logger.info("停止自动抽帧")
 
     def delete_selected_frames(self):
         """
@@ -564,7 +574,7 @@ class VideoPreviewPanel(QWidget):
             return
 
         for item in selected_items:
-            frame_path = item.data(Qt.UserRole)
+            frame_path = item.data(Qt.ItemDataRole.UserRole)
             try:
                 os.remove(frame_path)
                 logger.info(f"删除帧图片: {frame_path}")
@@ -577,39 +587,37 @@ class VideoPreviewPanel(QWidget):
             except Exception as e:
                 logger.error(f"删除帧图片失败: {frame_path}, 错误: {e}")
 
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, a0):
         """
         处理键盘按键事件
 
         Args:
-            event: 键盘事件
+            a0: 键盘事件
         """
         # 处理空格键播放/暂停切换
-        if event.key() == Qt.Key_Space:
+        if a0.key() == Qt.Key.Key_Space:
             self.play_pause()
-            event.accept()
+            a0.accept()
         # 处理A/D键切换前后资源
-        elif event.key() == Qt.Key_A:
+        elif a0.key() == Qt.Key.Key_A:
             # 发送信号通知切换到前一个资源
             self.switch_to_previous.emit()
-            logger.info("请求切换到前一个资源")
-            event.accept()
-        elif event.key() == Qt.Key_D:
+            a0.accept()
+        elif a0.key() == Qt.Key.Key_D:
             # 发送信号通知切换到后一个资源
             self.switch_to_next.emit()
-            logger.info("请求切换到后一个资源")
-            event.accept()
+            a0.accept()
         # 处理W键抽帧
-        elif event.key() == Qt.Key_W:
+        elif a0.key() == Qt.Key.Key_W:
             self.capture_frame()
-            event.accept()
+            a0.accept()
         # 处理Delete键删除选中的抽帧图片
-        elif event.key() == Qt.Key_Delete:
+        elif a0.key() == Qt.Key.Key_Delete:
             self.delete_selected_frames()
-            event.accept()
+            a0.accept()
         # 处理F11键切换全屏模式
-        elif event.key() == Qt.Key_F11:
+        elif a0.key() == Qt.Key.Key_F11:
             self.toggle_fullscreen_mode()
-            event.accept()
+            a0.accept()
         else:
-            super().keyPressEvent(event)
+            super().keyPressEvent(a0)

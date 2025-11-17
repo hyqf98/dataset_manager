@@ -1,12 +1,12 @@
 import os
 import cv2
 import numpy as np
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, QLabel, QComboBox, QTextEdit, QMessageBox, QSplitter, QDialog
-from PyQt5.QtCore import Qt, pyqtSignal, QUrl
-from PyQt5.QtGui import QPixmap, QImage
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-from PyQt5.QtMultimediaWidgets import QGraphicsVideoItem
-from PyQt5.QtWidgets import QGraphicsView, QGraphicsScene
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, QLabel, QComboBox, QTextEdit, QMessageBox, QSplitter, QDialog
+from PyQt6.QtCore import Qt, pyqtSignal, QUrl
+from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtMultimedia import QMediaPlayer
+from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
+from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene
 from ..logging_config import logger
 
 # 延迟导入YOLO，避免在模块加载时就尝试导入
@@ -48,7 +48,7 @@ class AlgorithmTestPanel(QDialog):
         self.model_combo.currentTextChanged.connect(self.on_model_or_classes_changed)
         self.classes_edit.textChanged.connect(self.on_model_or_classes_changed)
 
-        # 视频处理信号（将在子线程中直接调用方法）
+        # 视频处理信号(将在子线程中直接调用方法)
         pass
 
     def closeEvent(self, a0):
@@ -154,15 +154,15 @@ class AlgorithmTestPanel(QDialog):
         bottom_layout = QHBoxLayout(bottom_widget)
 
         # 创建分割器用于左右对比
-        splitter = QSplitter(Qt.Horizontal)  # type: ignore
+        splitter = QSplitter(Qt.Orientation.Horizontal)  # type: ignore
 
-        # 左侧：原始文件显示区域（动态大小）
+        # 左侧：原始文件显示区域(动态大小)
         self.original_container = QWidget()
         self.original_layout = QVBoxLayout(self.original_container)
         self.original_layout.setContentsMargins(0, 0, 0, 0)
         # 垂直居中对齐通过其他方式实现
         self.original_image_label = QLabel("原始文件")
-        self.original_image_label.setAlignment(Qt.AlignCenter)  # type: ignore
+        self.original_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
         self.original_image_label.setMinimumSize(400, 400)  # 动态大小
         self.original_image_label.setStyleSheet("border: 1px solid gray;")
 
@@ -172,13 +172,13 @@ class AlgorithmTestPanel(QDialog):
         self.original_layout.addWidget(self.original_image_label)
         self.original_container.setLayout(self.original_layout)
 
-        # 右侧：识别后的文件显示区域（动态大小）
+        # 右侧：识别后的文件显示区域(动态大小)
         self.result_container = QWidget()
         self.result_layout = QVBoxLayout(self.result_container)
         self.result_layout.setContentsMargins(0, 0, 0, 0)
         # 垂直居中对齐通过其他方式实现
         self.result_image_label = QLabel("识别后文件")
-        self.result_image_label.setAlignment(Qt.AlignCenter)  # type: ignore
+        self.result_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
         self.result_image_label.setMinimumSize(400, 400)  # 动态大小
         self.result_image_label.setStyleSheet("border: 1px solid gray;")
         self.result_layout.addWidget(self.result_image_label)
@@ -187,7 +187,7 @@ class AlgorithmTestPanel(QDialog):
         # 添加到分割器
         splitter.addWidget(self.original_container)
         splitter.addWidget(self.result_container)
-        splitter.setSizes([400, 400])  # 设置初始大小（动态大小）
+        splitter.setSizes([400, 400])  # 设置初始大小(动态大小)
 
         # 添加到下半部分布局
         bottom_layout.addWidget(splitter)
@@ -215,7 +215,7 @@ class AlgorithmTestPanel(QDialog):
         self.video_view.hide()
 
         # 连接媒体播放器信号
-        self.media_player.stateChanged.connect(self.media_state_changed)
+        self.media_player.playbackStateChanged.connect(self.media_state_changed)
 
         # 连接视频项大小变化信号
         self.video_item.nativeSizeChanged.connect(self.video_native_size_changed)
@@ -342,7 +342,7 @@ class AlgorithmTestPanel(QDialog):
                         return model_path
                 except Exception as e:
                     logger.error(f"下载模型失败: {str(e)}")
-                    # 如果下载失败，返回模型名称（让YOLO库处理）
+                    # 如果下载失败，返回模型名称(让YOLO库处理)
                     return model_name
 
             # 如果不是预定义模型且文件不存在，返回原路径
@@ -373,10 +373,10 @@ class AlgorithmTestPanel(QDialog):
         if pixmap.isNull():
             return
 
-        # 缩放图片以适应显示区域（保持宽高比）
-        scaled_pixmap = pixmap.scaled(880, 800, Qt.KeepAspectRatio, Qt.SmoothTransformation)  # type: ignore
+        # 缩放图片以适应显示区域(保持宽高比)
+        scaled_pixmap = pixmap.scaled(880, 800, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)  # type: ignore
         self.original_image_label.setPixmap(scaled_pixmap)
-        self.original_image_label.setAlignment(Qt.AlignCenter)  # type: ignore
+        self.original_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
 
         # 如果有模型路径，自动运行测试以更新右侧对比图片
         if self.model_path:
@@ -421,18 +421,17 @@ class AlgorithmTestPanel(QDialog):
             self.video_view.show()
 
             # 设置视频媒体文件
-            media_content = QMediaContent(QUrl.fromLocalFile(file_path))
-            self.media_player.setMedia(media_content)
+            self.media_player.setSource(QUrl.fromLocalFile(file_path))
 
             # 调整视频项大小以适应视图
             self.resize_video_item()
 
             # 确保视频播放器垂直居中
-            self.video_view.setAlignment(Qt.AlignCenter)  # type: ignore
+            self.video_view.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
 
             # 自动播放视频
             # 使用 QTimer 延迟播放以确保媒体加载完成
-            from PyQt5.QtCore import QTimer
+            from PyQt6.QtCore import QTimer
             QTimer.singleShot(100, self.media_player.play)
 
     def adjust_window_size_for_video(self, video_path):
@@ -469,7 +468,7 @@ class AlgorithmTestPanel(QDialog):
             # 获取视图大小
             view_size = self.video_view.size()
             # 调整视频项大小
-            from PyQt5.QtCore import QSizeF
+            from PyQt6.QtCore import QSizeF
             self.video_item.setSize(QSizeF(view_size))
 
             # 同步调整右侧显示区域大小
@@ -539,7 +538,7 @@ class AlgorithmTestPanel(QDialog):
             # 清空右侧显示区域
             self.result_image_label.clear()
             self.result_image_label.setText("识别后文件")
-            self.result_image_label.setAlignment(Qt.AlignCenter)  # type: ignore
+            self.result_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
 
             # 隐藏结果视频播放器
             if hasattr(self, 'result_video_view') and self.result_video_view:
@@ -549,7 +548,7 @@ class AlgorithmTestPanel(QDialog):
 
     def load_file(self):
         """
-        加载并显示原始文件（图片或视频）
+        加载并显示原始文件(图片或视频)
         """
         if not os.path.exists(self.current_file_path):
             return
@@ -579,7 +578,7 @@ class AlgorithmTestPanel(QDialog):
         else:
             # 不支持的格式
             self.original_image_label.setText("不支持的文件格式")
-            self.original_image_label.setAlignment(Qt.AlignCenter)  # type: ignore
+            self.original_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
 
     def on_model_or_classes_changed(self):
         """
@@ -601,7 +600,7 @@ class AlgorithmTestPanel(QDialog):
             self.result_image_label.setText("识别后文件")
             return
 
-        # 获取模型文件路径（如果不存在则下载）
+        # 获取模型文件路径(如果不存在则下载)
         self.model_path = self.get_model_path(model_name)
 
         # 获取分类列表
@@ -661,7 +660,7 @@ class AlgorithmTestPanel(QDialog):
                 # 清空结果图片
                 self.result_image_label.clear()
                 self.result_image_label.setText("识别后文件")
-                self.result_image_label.setAlignment(Qt.AlignCenter)  # type: ignore
+                self.result_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
         # 如果是视频格式，进行视频帧识别
         elif ext in video_formats:
             try:
@@ -683,12 +682,12 @@ class AlgorithmTestPanel(QDialog):
                 # 清空结果图片
                 self.result_image_label.clear()
                 self.result_image_label.setText("识别后文件")
-                self.result_image_label.setAlignment(Qt.AlignCenter)  # type: ignore
+                self.result_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
         else:
             # 对于非图片和非视频文件，显示提示信息
             self.result_image_label.clear()
             self.result_image_label.setText("仅支持图片和视频文件识别")
-            self.result_image_label.setAlignment(Qt.AlignCenter)  # type: ignore
+            self.result_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
 
     def display_result_image(self, results):
         """
@@ -730,13 +729,13 @@ class AlgorithmTestPanel(QDialog):
             height, width, channel = image.shape
             bytes_per_line = 3 * width
             # 使用正确的构造函数
-            q_img = QImage(image.data.tobytes(), width, height, bytes_per_line, QImage.Format_RGB888).rgbSwapped()
+            q_img = QImage(image.data.tobytes(), width, height, bytes_per_line, QImage.Format.Format_RGB888).rgbSwapped()
             pixmap = QPixmap.fromImage(q_img)
 
-            # 缩放图片以适应显示区域（保持宽高比）
-            scaled_pixmap = pixmap.scaled(880, 800, Qt.KeepAspectRatio, Qt.SmoothTransformation)  # type: ignore
+            # 缩放图片以适应显示区域(保持宽高比)
+            scaled_pixmap = pixmap.scaled(880, 800, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)  # type: ignore
             self.result_image_label.setPixmap(scaled_pixmap)
-            self.result_image_label.setAlignment(Qt.AlignCenter)  # type: ignore
+            self.result_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
 
         except Exception as e:
             QMessageBox.critical(self, "错误", f"显示识别结果失败: {str(e)}")
@@ -769,7 +768,7 @@ class AlgorithmTestPanel(QDialog):
             self.result_video_view.hide()
             self.result_image_label.show()
             self.result_image_label.setText(f"视频识别失败: {str(e)}")
-            self.result_image_label.setAlignment(Qt.AlignCenter)  # type: ignore
+            self.result_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
 
     def start_real_time_video_processing(self, model):
         """
@@ -780,7 +779,7 @@ class AlgorithmTestPanel(QDialog):
         """
         try:
             # 创建实时视频处理线程
-            from PyQt5.QtCore import QThread, pyqtSignal
+            from PyQt6.QtCore import QThread, pyqtSignal
 
             class RealTimeVideoProcessingThread(QThread):
                 # 定义信号
@@ -806,7 +805,7 @@ class AlgorithmTestPanel(QDialog):
                             if not ret:
                                 break
 
-                            # 进行推理（对每一帧都进行识别）
+                            # 进行推理(对每一帧都进行识别)
                             results = self.model(frame)
 
                             # 在帧上绘制检测结果
@@ -875,16 +874,16 @@ class AlgorithmTestPanel(QDialog):
             # 转换为QImage并显示
             height, width, channel = frame.shape
             bytes_per_line = 3 * width
-            q_img = QImage(frame.data.tobytes(), width, height, bytes_per_line, QImage.Format_RGB888).rgbSwapped()
+            q_img = QImage(frame.data.tobytes(), width, height, bytes_per_line, QImage.Format.Format_RGB888).rgbSwapped()
             pixmap = QPixmap.fromImage(q_img)
 
             # 获取原始视频的尺寸
             original_size = self.original_image_label.size()
 
-            # 缩放图片以适应显示区域（保持宽高比），与原始视频大小保持一致
-            scaled_pixmap = pixmap.scaled(original_size.width(), original_size.height(), Qt.KeepAspectRatio, Qt.SmoothTransformation)  # type: ignore
+            # 缩放图片以适应显示区域(保持宽高比)，与原始视频大小保持一致
+            scaled_pixmap = pixmap.scaled(original_size.width(), original_size.height(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)  # type: ignore
             self.result_image_label.setPixmap(scaled_pixmap)
-            self.result_image_label.setAlignment(Qt.AlignCenter)  # type: ignore
+            self.result_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
 
             # 显示图片标签
             self.result_image_label.show()
@@ -909,11 +908,10 @@ class AlgorithmTestPanel(QDialog):
         try:
             if temp_video_path and os.path.exists(temp_video_path):
                 # 设置识别结果视频媒体文件
-                media_content = QMediaContent(QUrl.fromLocalFile(temp_video_path))
-                self.result_media_player.setMedia(media_content)
+                self.result_media_player.setSource(QUrl.fromLocalFile(temp_video_path))
 
                 # 调整视频项大小
-                from PyQt5.QtCore import QSizeF
+                from PyQt6.QtCore import QSizeF
                 self.result_video_item.setSize(QSizeF(self.result_video_view.size()))
 
                 # 自动播放视频
@@ -923,7 +921,7 @@ class AlgorithmTestPanel(QDialog):
                 self.result_video_view.hide()
                 self.result_image_label.show()
                 self.result_image_label.setText("视频识别失败")
-                self.result_image_label.setAlignment(Qt.AlignCenter)  # type: ignore
+                self.result_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
         except Exception as e:
             logger.error(f"更新结果视频失败: {str(e)}")
 
@@ -939,7 +937,7 @@ class AlgorithmTestPanel(QDialog):
             self.result_video_view.hide()
             self.result_image_label.show()
             self.result_image_label.setText(f"视频识别失败: {error_message}")
-            self.result_image_label.setAlignment(Qt.AlignCenter)  # type: ignore
+            self.result_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore
         except Exception as e:
             logger.error(f"显示视频错误失败: {str(e)}")
 
@@ -960,7 +958,7 @@ class AlgorithmTestPanel(QDialog):
         self.result_video_view.hide()
 
         # 连接媒体播放器信号
-        self.result_media_player.stateChanged.connect(self.result_media_state_changed)
+        self.result_media_player.playbackStateChanged.connect(self.result_media_state_changed)
 
         # 连接视频项大小变化信号
         self.result_video_item.nativeSizeChanged.connect(self.result_video_native_size_changed)
@@ -980,7 +978,7 @@ class AlgorithmTestPanel(QDialog):
             # 获取视图大小
             view_size = self.result_video_view.size()
             # 调整视频项大小
-            from PyQt5.QtCore import QSizeF
+            from PyQt6.QtCore import QSizeF
             self.result_video_item.setSize(QSizeF(view_size))
 
     def result_media_state_changed(self, state):
@@ -1029,7 +1027,7 @@ class AlgorithmTestPanel(QDialog):
                 if not ret:
                     break
 
-                # 进行推理（对每一帧都进行识别以确保准确性）
+                # 进行推理(对每一帧都进行识别以确保准确性)
                 results = model(frame)
 
                 # 在帧上绘制检测结果

@@ -2,9 +2,9 @@ from enum import Enum
 from typing import Optional
 import os
 import json
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem, QDialog, QFormLayout, \
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem, QDialog, QFormLayout, \
     QComboBox, QLineEdit, QMessageBox, QFileDialog, QDialogButtonBox, QHBoxLayout, QLabel
-from PyQt5.QtCore import pyqtSignal, Qt
+from PyQt6.QtCore import pyqtSignal, Qt
 from ..logging_config import logger
 
 
@@ -68,7 +68,7 @@ class DataSourceManager:
             self.config_file = os.path.join(dataset_manager_dir, "data_sources.json")
         else:
             self.config_file = config_file
-            
+
         self.data_sources = []
         self.load_data_sources()
 
@@ -96,11 +96,10 @@ class DataSourceManager:
         try:
             # 确保目录存在
             os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
-            
+
             data = [ds.to_dict() for ds in self.data_sources]
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            logger.info(f"保存了 {len(self.data_sources)} 个数据源到配置文件")
         except Exception as e:
             logger.error(f"保存数据源时出错: {e}")
             QMessageBox.critical(None, "错误", f"保存数据源时出错: {e}")
@@ -173,7 +172,7 @@ class DataSourceForm(QDialog):
         self.save_path_edit = QLineEdit()
         self.save_path_button = QPushButton("选择路径")
 
-        # 设置默认值（如果是编辑模式）
+        # 设置默认值(如果是编辑模式)
         if self.data_source:
             index = self.type_combo.findData(self.data_source.source_type)
             if index >= 0:
@@ -191,7 +190,7 @@ class DataSourceForm(QDialog):
         layout.addRow("", self.save_path_button)
 
         # 添加按钮
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
@@ -208,7 +207,7 @@ class DataSourceForm(QDialog):
         """
         获取表单中的数据源对象
         """
-        if self.result() == QDialog.Accepted:
+        if self.result() == QDialog.DialogCode.Accepted:
             name = f"数据源_{self.type_combo.currentData().value}"
             return DataSource(
                 name=name,
@@ -251,7 +250,7 @@ class DataSourcePanel(QWidget):
                 border-bottom: 1px solid #ccc;
             }
         """)
-        
+
         # 创建按钮布局
         button_layout = QHBoxLayout()
         self.add_btn = QPushButton("➕ 添加数据源")
@@ -271,7 +270,7 @@ class DataSourcePanel(QWidget):
                 background-color: #3d8b40;
             }
         """)
-        
+
         self.refresh_btn = QPushButton("🔄 刷新")
         self.refresh_btn.setStyleSheet("""
             QPushButton {
@@ -327,7 +326,7 @@ class DataSourcePanel(QWidget):
             }
         """)
 
-        # 移除双击播放事件（改用操作按钮）
+        # 移除双击播放事件(改用操作按钮)
         # self.data_source_tree.itemDoubleClicked.connect(self.play_data_source)
 
         # 添加控件到布局
@@ -351,14 +350,14 @@ class DataSourcePanel(QWidget):
             item.setText(1, ds.source_type.value)
             item.setText(2, ds.stream_url)
             item.setText(3, ds.save_path)
-            item.setData(0, Qt.UserRole, ds.id)
-            
+            item.setData(0, Qt.ItemDataRole.UserRole, ds.id)
+
             # 创建操作按钮容器
             button_widget = QWidget()
             button_layout = QHBoxLayout(button_widget)
             button_layout.setContentsMargins(0, 0, 0, 0)
             button_layout.setSpacing(2)
-            
+
             # 播放按钮
             play_btn = QPushButton("播放")
             play_btn.setStyleSheet("""
@@ -375,7 +374,7 @@ class DataSourcePanel(QWidget):
                 }
             """)
             play_btn.clicked.connect(lambda checked, ds_id=ds.id: self.play_data_source_by_id(ds_id))
-            
+
             # 编辑按钮
             edit_btn = QPushButton("编辑")
             edit_btn.setStyleSheet("""
@@ -392,7 +391,7 @@ class DataSourcePanel(QWidget):
                 }
             """)
             edit_btn.clicked.connect(lambda checked, ds_id=ds.id: self.update_data_source(ds_id))
-            
+
             # 删除按钮
             delete_btn = QPushButton("删除")
             delete_btn.setStyleSheet("""
@@ -409,12 +408,12 @@ class DataSourcePanel(QWidget):
                 }
             """)
             delete_btn.clicked.connect(lambda checked, ds_id=ds.id: self.delete_data_source(ds_id))
-            
+
             # 添加按钮到布局
             button_layout.addWidget(play_btn)
             button_layout.addWidget(edit_btn)
             button_layout.addWidget(delete_btn)
-            
+
             # 将按钮容器设置到操作列
             self.data_source_tree.setItemWidget(item, 4, button_widget)
 
@@ -425,7 +424,7 @@ class DataSourcePanel(QWidget):
         添加数据源
         """
         form = DataSourceForm(self)
-        if form.exec_() == QDialog.Accepted:
+        if form.exec() == QDialog.DialogCode.Accepted:
             data_source = form.get_data_source()
             if data_source:
                 self.manager.add_data_source(data_source)
@@ -444,7 +443,7 @@ class DataSourcePanel(QWidget):
 
         if data_source:
             form = DataSourceForm(self, data_source)
-            if form.exec_() == QDialog.Accepted:
+            if form.exec() == QDialog.DialogCode.Accepted:
                 updated_data_source = form.get_data_source()
                 if updated_data_source:
                     updated_data_source.id = data_source_id
@@ -456,8 +455,8 @@ class DataSourcePanel(QWidget):
         删除数据源
         """
         reply = QMessageBox.question(self, "确认", "确定要删除选中的数据源吗?",
-                                     QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
             self.manager.delete_data_source(data_source_id)
             self.refresh_data_sources()
 
@@ -479,7 +478,7 @@ class DataSourcePanel(QWidget):
         """
         播放数据源
         """
-        data_source_id = item.data(0, Qt.UserRole)
+        data_source_id = item.data(0, Qt.ItemDataRole.UserRole)
 
         # 查找对应的数据源
         for ds in self.manager.get_data_sources():

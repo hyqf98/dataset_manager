@@ -1,9 +1,9 @@
 import os
 import traceback
 
-from PyQt5.QtCore import Qt, QEvent
-from PyQt5.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QSplitter, QMessageBox, QApplication, QDialog, QMenuBar, QAction, QFileDialog, QMenu
-from PyQt5.QtGui import QKeyEvent
+from PyQt6.QtCore import Qt, QEvent
+from PyQt6.QtWidgets import QMainWindow, QHBoxLayout, QWidget, QSplitter, QMessageBox, QApplication, QDialog, QMenuBar, QFileDialog, QMenu
+from PyQt6.QtGui import QKeyEvent, QAction
 
 from ..file_manager.file_manager_panel import FileManagerPanel
 from ..logging_config import logger
@@ -26,8 +26,8 @@ from ..auto_annotation.log_analysis_panel import LogAnalysisPanel
 class MainWindow(QMainWindow):
     """
     主窗口类，负责创建应用程序的两栏布局
-    左侧：文件管理面板（占1/3宽度）
-    右侧：预览面板（占2/3宽度）
+    左侧：文件管理面板(占1/3宽度)
+    右侧：预览面板(占2/3宽度)
     """
 
     def __init__(self):
@@ -55,7 +55,7 @@ class MainWindow(QMainWindow):
             screen = QApplication.primaryScreen()
             window_width = 800  # 默认宽度
             window_height = 600  # 默认高度
-            
+
             if screen:
                 screen_geometry = screen.availableGeometry()
                 screen_width = screen_geometry.width()
@@ -108,7 +108,7 @@ class MainWindow(QMainWindow):
             main_layout = QHBoxLayout(central_widget)
             main_layout.addWidget(splitter)
             central_widget.setLayout(main_layout)
-            
+
             # 保存分割器引用，以便后续控制
             self.splitter = splitter
         except Exception as e:
@@ -119,7 +119,7 @@ class MainWindow(QMainWindow):
     def resizeEvent(self, a0):  # type: ignore
         """
         处理窗口大小调整事件
-        
+
         Args:
             a0: 窗口大小调整事件
         """
@@ -127,16 +127,16 @@ class MainWindow(QMainWindow):
             # 获取当前窗口尺寸
             window_width = self.width()
             window_height = self.height()
-            
+
             # 计算面板尺寸
             total_width = window_width - 20  # 窗口宽度减去一些边距
             left_width = int(total_width * 0.20)    # 20%宽度给左侧文件管理面板
             right_width = int(total_width * 0.80)   # 80%宽度给右侧预览面板
             panel_height = window_height - 100
-            
+
             # 注意：由于我们已经移除了set_panel_size方法，这里不再调用它
             # 面板尺寸在构造时已经设置，窗口大小变化时保持比例
-            
+
             super().resizeEvent(a0)
         except Exception as e:
             logger.error(f"处理窗口大小调整事件时发生异常: {str(e)}")
@@ -160,10 +160,10 @@ class MainWindow(QMainWindow):
 
             # 连接文件管理器的文件删除信号到预览面板清空
             self.file_manager_panel.events.file_deleted.connect(self.on_file_manager_file_deleted)
-            
+
             # 连接预览面板的全屏模式切换信号
             self.preview_panel.toggle_fullscreen.connect(self.toggle_fullscreen_mode)
-            
+
             # 连接文件管理器的文件选中信号到窗口标题更新
             self.file_manager_panel.events.file_selected.connect(self.on_file_manager_file_selected)
         except Exception as e:
@@ -182,7 +182,6 @@ class MainWindow(QMainWindow):
             if file_path and os.path.exists(file_path):
                 # 更新窗口标题显示当前文件信息
                 self.update_window_title(file_path)
-                logger.debug(f"处理文件管理器文件选中事件: {file_path}")
         except Exception as e:
             logger.error(f"处理文件管理器文件选中事件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -207,7 +206,7 @@ class MainWindow(QMainWindow):
                     model_config_action = QAction('模型配置', self)
                     model_config_action.triggered.connect(self.open_model_config_panel)
                     auto_annotation_menu.addAction(model_config_action)
-                    
+
                     auto_annotation_action = QAction('自动标注', self)
                     auto_annotation_action.triggered.connect(self.open_auto_annotation_panel)
                     auto_annotation_menu.addAction(auto_annotation_action)
@@ -218,7 +217,7 @@ class MainWindow(QMainWindow):
                     dataset_split_action = QAction('数据集划分管理', self)
                     dataset_split_action.triggered.connect(self.open_dataset_split_panel)
                     dataset_split_menu.addAction(dataset_split_action)
-                    
+
                     # 添加日志分析菜单项
                     log_analysis_action = QAction('日志分析', self)
                     log_analysis_action.triggered.connect(self.open_log_analysis_panel)
@@ -230,7 +229,7 @@ class MainWindow(QMainWindow):
                     server_management_action = QAction('服务器管理', self)
                     server_management_action.triggered.connect(self.open_server_config_panel)
                     file_upload_menu.addAction(server_management_action)
-                    
+
                     # 添加远程文件浏览器菜单项
                     remote_browser_action = QAction('远程文件浏览器', self)
                     remote_browser_action.triggered.connect(self.open_remote_file_browser)
@@ -248,7 +247,7 @@ class MainWindow(QMainWindow):
         切换全屏模式
         """
         self.fullscreen_mode = not self.fullscreen_mode
-        
+
         if self.fullscreen_mode:
             # 进入全屏模式
             self.left_panel_visible = self.file_manager_panel.isVisible()
@@ -275,7 +274,6 @@ class MainWindow(QMainWindow):
                 self.preview_panel.preview_file(file_path)
                 # 更新窗口标题显示当前文件信息
                 self.update_window_title(file_path)
-                logger.debug(f"处理文件选中事件: {file_path}")
         except Exception as e:
             logger.error(f"处理文件选中事件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -283,7 +281,7 @@ class MainWindow(QMainWindow):
     def update_window_title(self, file_path):
         """
         更新窗口标题，显示当前文件信息
-        
+
         Args:
             file_path (str): 当前选中的文件路径
         """
@@ -308,17 +306,17 @@ class MainWindow(QMainWindow):
     def get_file_position_info(self, file_path):
         """
         获取文件在列表中的位置信息
-        
+
         Args:
             file_path (str): 当前文件路径
-            
+
         Returns:
             dict: 包含current_position和total_files的字典，如果出错则返回None
         """
         try:
             if not hasattr(self, 'file_manager_panel') or not file_path:
                 return None
-                
+
             return self.file_manager_panel.get_current_file_position_info(file_path)
         except Exception as e:
             logger.error(f"获取文件位置信息时发生异常: {str(e)}")
@@ -328,25 +326,25 @@ class MainWindow(QMainWindow):
     def collect_supported_files(self, source_model, proxy_model):
         """
         收集所有支持预览的文件
-        
+
         Args:
             source_model: 源文件系统模型
             proxy_model: 代理模型
-            
+
         Returns:
             list: 支持预览的文件信息列表
         """
         try:
             supported_files = []
-            
+
             # 使用文件管理器面板的方法获取支持的文件列表
             if hasattr(self, 'file_manager_panel'):
                 return self.file_manager_panel.get_supported_files_list()
-            
+
             # 如果无法使用文件管理器面板的方法，则使用旧方法
             # 遍历代理模型中的所有项目
             self._collect_files_recursive(proxy_model, source_model, proxy_model.index(0, 0), supported_files)
-            
+
             return supported_files
         except Exception as e:
             logger.error(f"收集支持的文件时发生异常: {str(e)}")
@@ -356,7 +354,7 @@ class MainWindow(QMainWindow):
     def _collect_files_recursive(self, proxy_model, source_model, proxy_index, supported_files):
         """
         递归收集支持预览的文件
-        
+
         Args:
             proxy_model: 代理模型
             source_model: 源文件系统模型
@@ -367,22 +365,22 @@ class MainWindow(QMainWindow):
             # 检查索引是否有效
             if not proxy_index.isValid():
                 return
-                
+
             # 将代理索引映射到源索引
             source_index = proxy_model.mapToSource(proxy_index)
             if not source_index.isValid():
                 return
-                
+
             # 获取文件路径
             file_path = source_model.filePath(source_index)
-            
+
             # 检查是否是文件且支持预览
             if os.path.isfile(file_path) and self.is_supported_file(file_path):
                 supported_files.append({
                     'path': file_path,
                     'name': os.path.basename(file_path)
                 })
-                
+
             # 递归处理子项
             rows = proxy_model.rowCount(proxy_index)
             for row in range(rows):
@@ -395,27 +393,27 @@ class MainWindow(QMainWindow):
     def is_supported_file(self, file_path):
         """
         检查文件是否支持预览
-        
+
         Args:
             file_path (str): 文件路径
-            
+
         Returns:
             bool: 是否支持预览
         """
         try:
             if not os.path.isfile(file_path):
                 return False
-                
+
             # 获取文件扩展名
             _, ext = os.path.splitext(file_path)
             ext = ext.lower()
-            
+
             # 支持的文件格式列表
             supported_formats = [
                 '.jpg', '.jpeg', '.png', '.bmp', '.gif',  # 图片格式
                 '.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv'  # 视频格式
             ]
-            
+
             return ext in supported_formats
         except Exception as e:
             logger.error(f"检查文件是否支持预览时发生异常: {str(e)}")
@@ -456,17 +454,17 @@ class MainWindow(QMainWindow):
             if reply == QMessageBox.StandardButton.Yes:
                 # 保存当前文件路径用于后续处理
                 current_file_path = file_path
-                
+
                 # 在删除前先查找下一个文件
                 next_file_path = self.file_manager_panel._find_next_file(file_path)
-                
+
                 # 执行删除操作
                 self.file_manager_panel.move_to_recycle_bin(file_path)
                 logger.info(f"删除文件: {file_path}")
-                
-                # 延迟选择并预览下一个文件（等待视图刷新完成）
+
+                # 延迟选择并预览下一个文件(等待视图刷新完成)
                 if next_file_path:
-                    from PyQt5.QtCore import QTimer
+                    from PyQt6.QtCore import QTimer
                     QTimer.singleShot(200, lambda: self._select_and_preview_next_file(next_file_path))
                 else:
                     # 没有下一个文件，清空预览并恢复默认标题
@@ -480,7 +478,7 @@ class MainWindow(QMainWindow):
     def _select_and_preview_next_file(self, file_path):
         """
         选中并预览下一个文件
-        
+
         Args:
             file_path (str): 要预览的文件路径
         """
@@ -514,10 +512,10 @@ class MainWindow(QMainWindow):
         try:
             # 让文件管理器选择下一个文件
             self.file_manager_panel.select_next_file()
-            
+
             # 获取当前选中的文件
             current_file = self.file_manager_panel.get_current_selected_file()
-            
+
             # 如果找到了支持的文件，则在预览面板中显示
             if current_file and self.is_supported_file(current_file):
                 self.preview_panel.preview_file(current_file)
@@ -528,7 +526,7 @@ class MainWindow(QMainWindow):
                 self.preview_panel.show_message("请选择文件进行预览")
                 # 恢复默认窗口标题
                 self.setWindowTitle('数据集管理器')
-                
+
         except Exception as e:
             logger.error(f"选择下一个可用资源时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
@@ -546,7 +544,7 @@ class MainWindow(QMainWindow):
             self.data_source_panel = DataSourcePanel()
             # 连接播放信号
             self.data_source_panel.play_requested.connect(self.play_live_stream)
-            
+
             # 创建对话框并显示面板
             dialog = QDialog(self)
             dialog.setWindowTitle("数据源管理")
@@ -556,7 +554,7 @@ class MainWindow(QMainWindow):
             # 设置对话框的父引用，以便在播放时可以关闭
             self.data_source_panel.dialog_parent = dialog  # type: ignore
             dialog.exec()
-            
+
             # 断开信号连接并清理引用，避免访问已销毁的对象
             try:
                 self.data_source_panel.play_requested.disconnect(self.play_live_stream)
@@ -602,7 +600,7 @@ class MainWindow(QMainWindow):
         try:
             # 每次都创建新的实例，避免使用已销毁的对象
             self.model_config_panel = ModelConfigPanel()
-            
+
             # 创建对话框并显示面板
             dialog = QDialog(self)
             dialog.setWindowTitle("模型配置")
@@ -610,7 +608,7 @@ class MainWindow(QMainWindow):
             layout.addWidget(self.model_config_panel)
             dialog.resize(800, 600)
             dialog.exec()
-            
+
             # 清理引用，避免访问已销毁的对象
             if hasattr(self, 'model_config_panel'):
                 delattr(self, 'model_config_panel')
@@ -626,7 +624,7 @@ class MainWindow(QMainWindow):
         try:
             # 每次都创建新的实例，避免使用已销毁的对象
             self.auto_annotation_panel = AutoAnnotationPanel()
-            
+
             # 创建对话框并显示面板
             dialog = QDialog(self)
             dialog.setWindowTitle("自动标注")
@@ -634,7 +632,7 @@ class MainWindow(QMainWindow):
             layout.addWidget(self.auto_annotation_panel)
             dialog.resize(800, 600)
             dialog.exec()
-            
+
             # 清理引用，避免访问已销毁的对象
             if hasattr(self, 'auto_annotation_panel'):
                 delattr(self, 'auto_annotation_panel')
@@ -650,10 +648,10 @@ class MainWindow(QMainWindow):
         try:
             # 每次都创建新的实例，避免使用已销毁的对象
             self.dataset_split_panel = DatasetSplitManagementPanel()
-            
+
             # 连接数据集划分完成信号
             self.dataset_split_panel.dataset_split_completed.connect(self.on_dataset_split_completed)
-            
+
             # 创建对话框并显示面板
             dialog = QDialog(self)
             dialog.setWindowTitle("数据集划分管理")
@@ -661,7 +659,7 @@ class MainWindow(QMainWindow):
             layout.addWidget(self.dataset_split_panel)
             dialog.resize(1000, 600)
             dialog.exec()
-            
+
             # 断开信号连接并清理引用，避免访问已销毁的对象
             try:
                 self.dataset_split_panel.dataset_split_completed.disconnect(self.on_dataset_split_completed)
@@ -674,11 +672,11 @@ class MainWindow(QMainWindow):
             logger.error(f"打开数据集划分面板时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"打开数据集划分面板时发生异常: {str(e)}")
-    
+
     def on_dataset_split_completed(self, output_path):
         """
         处理数据集划分完成事件，自动导入划分后的数据集文件夹
-        
+
         Args:
             output_path (str): 划分后的数据集路径
         """
@@ -692,7 +690,7 @@ class MainWindow(QMainWindow):
             logger.error(f"导入划分后的数据集时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
 
-    
+
     def open_server_config_panel(self):
         """
         打开服务器配置面板
@@ -700,7 +698,7 @@ class MainWindow(QMainWindow):
         try:
             # 每次都创建新的实例，避免使用已销毁的对象
             self.server_config_panel = ServerConfigPanel()
-            
+
             # 创建对话框并显示面板
             dialog = QDialog(self)
             dialog.setWindowTitle("服务器管理")
@@ -708,7 +706,7 @@ class MainWindow(QMainWindow):
             layout.addWidget(self.server_config_panel)
             dialog.resize(800, 600)
             dialog.exec()
-            
+
             # 清理引用，避免访问已销毁的对象
             if hasattr(self, 'server_config_panel'):
                 delattr(self, 'server_config_panel')
@@ -724,7 +722,7 @@ class MainWindow(QMainWindow):
         try:
             # 每次都创建新的实例，避免使用已销毁的对象
             self.remote_file_browser_panel = RemoteFileBrowserPanel()
-            
+
             # 创建对话框并显示面板
             dialog = QDialog(self)
             dialog.setWindowTitle("远程文件浏览器")
@@ -732,7 +730,7 @@ class MainWindow(QMainWindow):
             layout.addWidget(self.remote_file_browser_panel)
             dialog.resize(900, 700)
             dialog.exec()
-            
+
             # 清理引用，避免访问已销毁的对象
             if hasattr(self, 'remote_file_browser_panel'):
                 delattr(self, 'remote_file_browser_panel')
@@ -748,7 +746,7 @@ class MainWindow(QMainWindow):
         try:
             # 每次都创建新的实例，避免使用已销毁的对象
             self.log_analysis_panel = LogAnalysisPanel()
-            
+
             # 创建对话框并显示面板
             dialog = QDialog(self)
             dialog.setWindowTitle("日志分析")
@@ -756,7 +754,7 @@ class MainWindow(QMainWindow):
             layout.addWidget(self.log_analysis_panel)
             dialog.resize(1000, 700)
             dialog.exec()
-            
+
             # 清理引用，避免访问已销毁的对象
             if hasattr(self, 'log_analysis_panel'):
                 delattr(self, 'log_analysis_panel')
@@ -817,7 +815,7 @@ class MainWindow(QMainWindow):
                 if isinstance(key_event, QKeyEvent) and key_event.key() == Qt.Key.Key_Escape and self.fullscreen_mode:
                     self.toggle_fullscreen_mode()
                     return True
-            
+
             return super().eventFilter(a0, a1)
         except Exception as e:
             logger.error(f"事件过滤器处理时发生异常: {str(e)}")
@@ -840,3 +838,5 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"窗口显示事件处理时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+

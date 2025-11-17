@@ -1,9 +1,10 @@
 import os
 from typing import List
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, \
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, \
     QTreeWidgetItem, QHeaderView, QFileDialog, QMessageBox, QProgressBar, QLabel, QInputDialog, \
-    QAbstractItemView, QTreeView, QMenu, QAction
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+    QAbstractItemView, QTreeView, QMenu
+from PyQt6.QtGui import QAction
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from .server_config import ServerConfig
 from .ssh_client import SSHClient
 from ..logging_config import logger
@@ -231,7 +232,7 @@ class FileTransferWorker(QThread):
     
     def _count_files_in_directory(self, directory_path):
         """
-        计算目录中的文件总数（不包括子目录）
+        计算目录中的文件总数(不包括子目录)
         """
         count = 0
         try:
@@ -425,7 +426,7 @@ class RemoteBrowserDialog(QDialog):
             files = self.ssh_client.list_remote_files(self.current_path)
             self.file_tree.clear()
             
-            # 添加上级目录项（如果不是根目录）
+            # 添加上级目录项(如果不是根目录)
             if self.current_path != "/":
                 up_item = QTreeWidgetItem(self.file_tree)
                 up_item.setText(0, "..")
@@ -713,10 +714,10 @@ class RemoteBrowserDialog(QDialog):
             self,
             "确认删除",
             f"确定要删除{item_type} '{item_name}' 吗？\n\n此操作不可恢复！",
-            QMessageBox.Yes | QMessageBox.No  # type: ignore
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No  # type: ignore
         )
         
-        if reply != QMessageBox.Yes:
+        if reply != QMessageBox.StandardButton.Yes:
             return
             
         try:
@@ -765,7 +766,7 @@ class RemoteBrowserDialog(QDialog):
             if filename == "..":
                 return self.current_path
             
-            # 构建完整路径（无论是文件还是目录）
+            # 构建完整路径(无论是文件还是目录)
             if self.current_path == "/":
                 full_path = f"/{filename}"
             else:
@@ -899,7 +900,7 @@ class FileTransferDialog(QDialog):
         
         layout.addLayout(path_layout)
         
-        # 本地路径选择（仅下载时显示）
+        # 本地路径选择(仅下载时显示)
         if self.transfer_type == "download":
             local_path_layout = QHBoxLayout()
             self.local_path_label = QLabel("保存到:")
@@ -954,7 +955,7 @@ class FileTransferDialog(QDialog):
         if dialog.exec() == QFileDialog.DialogCode.Accepted:
             selected_paths = dialog.selectedFiles()
             
-            # 额外检查是否有选中的目录（通过目录选择对话框）
+            # 额外检查是否有选中的目录(通过目录选择对话框)
             directory = dialog.directory().absolutePath()
             if directory and os.path.isdir(directory):
                 # 如果用户双击了文件夹，可能需要额外处理
@@ -1040,13 +1041,13 @@ class FileTransferDialog(QDialog):
     
     def _calculate_folder_size(self, folder_path):
         """
-        计算文件夹大小（字节）
+        计算文件夹大小(字节)
         
         Args:
             folder_path (str): 文件夹路径
             
         Returns:
-            int: 文件夹大小（字节）
+            int: 文件夹大小(字节)
         """
         try:
             total_size = 0
@@ -1081,7 +1082,7 @@ class FileTransferDialog(QDialog):
     
     def browse_remote_directory(self):
         """
-        浏览远程目录（下载时使用）
+        浏览远程目录(下载时使用)
         """
         try:
             dialog = RemoteBrowserDialog(self.server_config, self)
@@ -1133,7 +1134,7 @@ class FileTransferDialog(QDialog):
     
     def select_local_directory(self):
         """
-        选择本地保存目录（下载时使用）
+        选择本地保存目录(下载时使用)
         """
         directory = QFileDialog.getExistingDirectory(self, "选择保存目录", self.local_path_edit.text())
         if directory:

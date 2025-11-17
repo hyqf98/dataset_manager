@@ -1,10 +1,11 @@
 from typing import Optional
 import os
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem, \
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTreeWidget, QTreeWidgetItem, \
     QDialog, QFormLayout, QLineEdit, QMessageBox, QDialogButtonBox, QHBoxLayout, QLabel, \
-    QSpinBox, QFileDialog, QMenu, QAction, QHeaderView
-from PyQt5.QtCore import Qt, QPoint
-from PyQt5.QtGui import QContextMenuEvent
+    QSpinBox, QFileDialog, QMenu, QHeaderView
+from PyQt6.QtGui import QAction
+from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtGui import QContextMenuEvent
 from .server_config import ServerConfig, ServerConfigManager
 from .ssh_client import SSHClient
 from .file_transfer_dialog import FileTransferDialog, RemoteBrowserDialog
@@ -31,7 +32,7 @@ class ServerConfigForm(QDialog):
         layout = QFormLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(10)
-        layout.setLabelAlignment(Qt.AlignRight)  # type: ignore
+        layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)  # type: ignore
         layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)  # type: ignore
 
         self.name_edit = QLineEdit()
@@ -45,7 +46,7 @@ class ServerConfigForm(QDialog):
         self.private_key_edit = QLineEdit()
         self.private_key_button = QPushButton("浏览...")
 
-        # 设置默认值（如果是编辑模式）
+        # 设置默认值(如果是编辑模式)
         if self.server_config:
             self.name_edit.setText(self.server_config.name)
             self.host_edit.setText(self.server_config.host)
@@ -138,7 +139,7 @@ class ServerConfigForm(QDialog):
         """
         获取表单中的服务器配置对象
         """
-        if self.result() == QDialog.Accepted:  # type: ignore
+        if self.result() == QDialog.DialogCode.Accepted:  # type: ignore
             return ServerConfig(
                 name=self.name_edit.text(),
                 host=self.host_edit.text(),
@@ -398,7 +399,7 @@ class ServerConfigPanel(QWidget):
         button_layout.addWidget(download_btn)
         button_layout.addWidget(delete_btn)
         
-        # 将按钮容器设置为项的第五列（操作列）
+        # 将按钮容器设置为项的第五列(操作列)
         self.server_config_tree.setItemWidget(item, 4, button_widget)
 
     def add_server_config(self):
@@ -406,7 +407,7 @@ class ServerConfigPanel(QWidget):
         添加服务器配置
         """
         form = ServerConfigForm(self)
-        if form.exec() == QDialog.Accepted:  # type: ignore
+        if form.exec() == QDialog.DialogCode.Accepted:  # type: ignore
             server_config = form.get_server_config()
             if server_config:
                 self.manager.add_server_config(server_config)
@@ -421,7 +422,7 @@ class ServerConfigPanel(QWidget):
         
         if server_config:
             form = ServerConfigForm(self, server_config)
-            if form.exec() == QDialog.Accepted:  # type: ignore
+            if form.exec() == QDialog.DialogCode.Accepted:  # type: ignore
                 updated_server_config = form.get_server_config()
                 if updated_server_config:
                     updated_server_config.id = server_config_id
@@ -433,8 +434,8 @@ class ServerConfigPanel(QWidget):
         删除服务器配置
         """
         reply = QMessageBox.question(self, "确认", "确定要删除选中的服务器配置吗?",
-                                     QMessageBox.Yes | QMessageBox.No)  # type: ignore
-        if reply == QMessageBox.Yes:
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)  # type: ignore
+        if reply == QMessageBox.StandardButton.Yes:
             self.manager.delete_server_config(server_config_id)
             self.refresh_server_configs()
 
