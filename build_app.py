@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-用于将数据集管理器打包成 macOS 应用程序的脚本
+用于将数据集管理器打包成跨平台应用程序的脚本
+支持 macOS 和 Windows 平台
 """
 
 import os
@@ -8,6 +9,7 @@ import sys
 import subprocess
 import shutil
 from pathlib import Path
+import platform
 
 def install_pyinstaller():
     """安装 PyInstaller"""
@@ -20,7 +22,10 @@ def install_pyinstaller():
 
 def create_spec_file():
     """创建 PyInstaller spec 文件"""
-    spec_content = '''
+    # 获取项目根目录（使用当前工作目录而不是 __file__）
+    project_root = Path.cwd()
+    
+    spec_content = f'''
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
@@ -28,7 +33,7 @@ import sys
 from pathlib import Path
 
 # 获取项目根目录
-project_root = Path(os.path.dirname(os.path.abspath(__file__)))
+project_root = Path(r"{project_root}")
 
 # 分析项目结构，添加所有需要的模块
 block_cipher = None
@@ -42,7 +47,8 @@ a = Analysis(
         (str(project_root / 'train_template.py.jinja'), '.'),
         (str(project_root / 'models.txt'), '.'),
         # 如果有图标文件，也添加进来
-        # (str(project_root / 'icon.icns'), '.'),
+        # (str(project_root / 'icon.icns'), '.'),  # macOS
+        # (str(project_root / 'icon.ico'), '.'),   # Windows
     ],
     hiddenimports=[
         # 确保所有必要的模块都被包含
@@ -50,6 +56,8 @@ a = Analysis(
         'PyQt6.QtCore',
         'PyQt6.QtGui',
         'PyQt6.QtWidgets',
+        'PyQt6.QtMultimedia',
+        'PyQt6.QtMultimediaWidgets',
         'cv2',
         'ultralytics',
         'openai',
@@ -60,7 +68,7 @@ a = Analysis(
         'pandas',
     ],
     hookspath=[],
-    hooksconfig={},
+    hooksconfig={{}},
     runtime_hooks=[],
     excludes=[],
     win_no_prefer_redirects=False,
@@ -93,12 +101,22 @@ exe = EXE(
     entitlements_file=None,
 )
 
+'''
+    
+    # 根据平台添加相应的打包配置
+    if platform.system() == "Darwin":  # macOS
+        spec_content += f'''
 app = BUNDLE(
     exe,
     name='dataset_manager.app',
     icon=None,
     bundle_identifier='com.dataset.manager',
 )
+'''
+    elif platform.system() == "Windows":
+        spec_content += '''
+# Windows 不需要 BUNDLE，直接使用 EXE
+pass
 '''
     
     with open('dataset_manager.spec', 'w', encoding='utf-8') as f:
@@ -110,7 +128,7 @@ def build_app():
     print("开始构建应用程序...")
     
     # 确保在项目根目录
-    project_root = Path(__file__).parent
+    project_root = Path(__file__).parent.resolve()
     os.chdir(project_root)
     
     # 创建 spec 文件
@@ -124,7 +142,15 @@ def build_app():
             "dataset_manager.spec"
         ])
         print("应用程序构建完成!")
-        print(f"应用程序位置: {project_root / 'dist' / 'dataset_manager.app'}")
+        
+        # 根据平台显示不同的输出路径
+        if platform.system() == "Darwin":  # macOS
+            print(f"应用程序位置: {project_root / 'dist' / 'dataset_manager.app'}")
+        elif platform.system() == "Windows":
+            print(f"应用程序位置: {project_root / 'dist' / 'dataset_manager.exe'}")
+        else:
+            print(f"应用程序位置: {project_root / 'dist'}")
+            
     except subprocess.CalledProcessError as e:
         print(f"构建失败: {e}")
         sys.exit(1)
@@ -133,6 +159,7 @@ def main():
     """主函数"""
     print("数据集管理器打包脚本")
     print("=" * 30)
+    print(f"当前平台: {platform.system()}")
     
     # 安装 PyInstaller
     install_pyinstaller()
