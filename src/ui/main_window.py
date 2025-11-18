@@ -778,6 +778,32 @@ class MainWindow(QMainWindow):
             # 检查是否是按键事件
             if a1 and a1.type() == QEvent.Type.KeyPress:
                 key_event = a1
+                
+                # 全局处理A/D键用于资源切换（无论焦点在哪个组件上）
+                if isinstance(key_event, QKeyEvent):
+                    # 检查是否有模态对话框打开，如果有则不处理A/D键
+                    has_modal_dialog = False
+                    modal_widgets = QApplication.topLevelWidgets()
+                    for widget in modal_widgets:
+                        if isinstance(widget, (QMessageBox, QDialog)) and widget.isActiveWindow():
+                            has_modal_dialog = True
+                            break
+                    
+                    # 只在没有模态对话框时处理A/D键
+                    if not has_modal_dialog:
+                        if key_event.key() == Qt.Key.Key_A:
+                            # 切换到上一个资源，传递当前预览的文件路径
+                            current_file = self.preview_panel.current_file_path if hasattr(self, 'preview_panel') else None
+                            self.file_manager_panel.select_previous_file(current_file)
+                            logger.info(f"全局捕获A键，切换到上一个资源，当前文件: {current_file}")
+                            return True
+                        elif key_event.key() == Qt.Key.Key_D:
+                            # 切换到下一个资源，传递当前预览的文件路径
+                            current_file = self.preview_panel.current_file_path if hasattr(self, 'preview_panel') else None
+                            self.file_manager_panel.select_next_file(current_file)
+                            logger.info(f"全局捕获D键，切换到下一个资源，当前文件: {current_file}")
+                            return True
+                
                 # 检查是否是回车键
                 if isinstance(key_event, QKeyEvent) and key_event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                     # 查找当前活动的模态对话框

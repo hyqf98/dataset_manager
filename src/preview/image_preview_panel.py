@@ -41,22 +41,65 @@ class Annotation:
 
 
 class RectangleAnnotation(Annotation):
-    """矩形注解类"""
+    """矩形注解类，支持旋转功能"""
 
-    def __init__(self, rectangle, label=""):
+    def __init__(self, rectangle, label="", rotation=0.0):
         super().__init__(label)
         self.rectangle = rectangle
+        self.rotation = rotation  # 旋转角度（度）
 
     def get_type(self):
         return 'rectangle'
 
     def contains_point(self, point):
-        return self.rectangle.contains(point)
+        """检查点是否在旋转后的矩形内部"""
+        if self.rotation == 0:
+            return self.rectangle.contains(point)
+        
+        # 对于旋转后的矩形，需要进行反向旋转检测
+        import math
+        center = self.rectangle.center()
+        
+        # 将点平移到原点
+        px = point.x() - center.x()
+        py = point.y() - center.y()
+        
+        # 反向旋转
+        angle_rad = -math.radians(self.rotation)
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+        
+        rotated_x = px * cos_a - py * sin_a
+        rotated_y = px * sin_a + py * cos_a
+        
+        # 平移回去并检查是否在原始矩形内
+        final_x = rotated_x + center.x()
+        final_y = rotated_y + center.y()
+        
+        return self.rectangle.contains(QPoint(int(final_x), int(final_y)))
 
     def move_by(self, offset):
         self.rectangle.moveTo(self.rectangle.topLeft() + offset)
 
-    def draw(self, painter, scale_factor, selected_control_point=None):
+    def rotate(self, angle_delta):
+        """旋转矩形
+        
+        Args:
+            angle_delta: 旋转角度增量（度）
+        """
+        self.rotation = (self.rotation + angle_delta) % 360
+
+    def draw(self, painter, scale_factor, selected_control_point=None, rotating_handle=None):
+        """绘制矩形，支持旋转显示
+        
+        Args:
+            painter: QPainter对象
+            scale_factor: 缩放因子
+            selected_control_point: 当前选中的控制点（未使用，保持兼容性）
+            rotating_handle: 当前正在旋转的控制点
+        """
+        import math
+        
         # 在ImageLabel的paintEvent中已经计算了偏移量,这里我们只需要使用它
         # 创建缩放后的矩形
         scaled_rect = QRect(
@@ -207,6 +250,33 @@ class PolygonAnnotation(Annotation):
             # 如果多边形已经闭合,绘制完整的多边形边框
             for i in range(len(scaled_points)):
                 painter.drawLine(scaled_points[i], scaled_points[(i + 1) % len(scaled_points)])
+
+        # 如果被选中，绘制控制点（用于旋转和调整大小）
+        if self.selected:
+            handle_size = 3
+            painter.setPen(QPen(Qt.GlobalColor.green, 1, Qt.PenStyle.SolidLine))
+            painter.setBrush(Qt.GlobalColor.green)
+            
+            # 绘制四个角点，如果是正在旋转的控制点，用不同颜色高亮
+            corners = [
+                ('top_left', scaled_rect.topLeft()),
+                ('top_right', scaled_rect.topRight()),
+                ('bottom_left', scaled_rect.bottomLeft()),
+                ('bottom_right', scaled_rect.bottomRight())
+            ]
+            
+            for handle_name, corner in corners:
+                if rotating_handle and rotating_handle == handle_name:
+                    painter.setBrush(Qt.GlobalColor.yellow)
+                    painter.drawEllipse(corner, 5, 5)
+                    painter.setBrush(Qt.GlobalColor.green)
+                else:
+                    painter.drawEllipse(corner, handle_size, handle_size)
+            
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+        
+        # 恢复画布状态
+        painter.restore()
 
         # 如果被选中,绘制控制点
         if self.selected:
@@ -1859,7 +1929,7 @@ class ImageDetailsPanel(QWidget):
         self.class_table.setHorizontalHeaderLabels(["分类"])
         self.class_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.class_table.verticalHeader().setVisible(False)
-        self.class_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.class_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)  # 支持Shift键批量选中
         self.class_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.class_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.class_table.itemSelectionChanged.connect(self.on_class_selection_changed)
@@ -1872,7 +1942,7 @@ class ImageDetailsPanel(QWidget):
         self.detail_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.detail_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.detail_table.verticalHeader().setVisible(False)
-        self.detail_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.detail_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)  # 支持Shift键批量选中
         self.detail_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.detail_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.detail_table.itemSelectionChanged.connect(self.on_detail_selection_changed)
@@ -2047,7 +2117,7 @@ class ImageDetailsPanel(QWidget):
         Args:
             event: 键盘事件
         """
-        if event.key() == Qt.Key_Delete:
+        if event.key() == Qt.Key.Key_Delete:
             # 获取选中的标注
             selected_annotations = []
 

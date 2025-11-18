@@ -234,7 +234,6 @@ class FileManagerEvents(QObject):
         """
         if os.path.exists(file_path):
             self.file_selected.emit(file_path)
-            logger.info(f"文件选中事件: {file_path}")
 
     def on_file_delete(self, file_path, recycle_bin_path):
         """
@@ -247,7 +246,6 @@ class FileManagerEvents(QObject):
         try:
             if not os.path.exists(recycle_bin_path):
                 os.makedirs(recycle_bin_path)
-                logger.debug(f"创建回收站目录: {recycle_bin_path}")
 
             filename = os.path.basename(file_path)
             destination = os.path.join(recycle_bin_path, filename)
@@ -261,7 +259,6 @@ class FileManagerEvents(QObject):
                 counter += 1
 
             shutil.move(file_path, destination)
-            logger.info(f"文件移动到回收站: {file_path} -> {destination}")
 
             # 保存原始路径信息到统一的元数据文件
             self.update_metadata_file(recycle_bin_path, {os.path.basename(destination): file_path})
@@ -473,6 +470,8 @@ class FileManagerUI(QWidget):
             self.tree_view.setAlternatingRowColors(True)
             # 问题2修复：启用多选模式以支持批量拖动
             self.tree_view.setSelectionMode(QTreeView.SelectionMode.ExtendedSelection)
+            # 禁用双击编辑功能
+            self.tree_view.setEditTriggers(QTreeView.EditTrigger.NoEditTriggers)
 
             # 问题1修复：确保滚动条始终可见(上下和左右)
             self.tree_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
@@ -481,10 +480,11 @@ class FileManagerUI(QWidget):
             from PyQt6.QtWidgets import QSizePolicy
             self.tree_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-            # 应用滚动条样式，使其更加明显(使用QTreeView选择器确保样式不被覆盖)
+            # 应用滚动条样式和选中样式，使其更加明显(使用QTreeView选择器确保样式不被覆盖)
             scrollbar_style = self.get_scrollbar_style()
+            selection_style = self.get_selection_style()
             # 添加QTreeView前缀确保样式只应用到当前TreeView
-            tree_view_style = f"QTreeView {{ border: none; }} {scrollbar_style}"
+            tree_view_style = f"QTreeView {{ border: none; }} {selection_style} {scrollbar_style}"
             self.tree_view.setStyleSheet(tree_view_style)
 
             # 强制设置滚动条的最小尺寸，确保滚动条可见
@@ -698,6 +698,37 @@ class FileManagerUI(QWidget):
             """
         except Exception as e:
             logger.error(f"获取滚动条样式时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            return ""
+
+    def get_selection_style(self):
+        """
+        获取选中样式，确保无论焦点在哪里都能看到选中高亮
+
+        Returns:
+            str: CSS样式字符串
+        """
+        try:
+            return """
+                /* 选中项的样式，当TreeView有焦点时 */
+                QTreeView::item:selected:active {
+                    background-color: #3daee9;
+                    color: white;
+                }
+                
+                /* 选中项的样式，当TreeView没有焦点时（关键！） */
+                QTreeView::item:selected:!active {
+                    background-color: #3daee9;
+                    color: white;
+                }
+                
+                /* 鼠标悬停时的样式 */
+                QTreeView::item:hover {
+                    background-color: #e0f2f7;
+                }
+            """
+        except Exception as e:
+            logger.error(f"获取选中样式时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             return ""
 
@@ -1621,7 +1652,7 @@ class FileManagerPanel(QWidget):
             layout.addWidget(self.ui)
             self.setLayout(layout)
 
-            # 创建Delete键快捷方式，但只在文件管理器有焦点时生效
+            # 创建Delete键快捷方式，支持单个和批量删除
             self.delete_shortcut = QShortcut(QKeySequence("Delete"), self)
             self.delete_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)  # 只在当前widget或其子widget有焦点时激活
             self.delete_shortcut.activated.connect(self.delete_selected_file)
@@ -1953,20 +1984,30 @@ class FileManagerPanel(QWidget):
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"打开回收站时发生异常: {str(e)}")
 
-    def select_previous_file(self):
+    def select_previous_file(self, current_file_path=None):
         """
         选择前一个文件
+
+        Args:
+            current_file_path (str, optional): 当前文件路径，如果不提供则从TreeView获取
         """
         try:
             logger.info("选择前一个文件")
-            # 获取当前选中的索引
-            current_index = self.ui.tree_view.currentIndex() if self.ui and self.ui.tree_view else None
-            if not current_index or not current_index.isValid():
-                return
 
-            # 获取当前文件路径
-            current_path = self.ui.model.get_file_path(current_index) if self.ui and self.ui.model else ""
-            if not current_path:
+            # 如果没有提供当前文件路径，则尝试从TreeView获取
+            if not current_file_path:
+                current_index = self.ui.tree_view.currentIndex() if self.ui and self.ui.tree_view else None
+                if current_index and current_index.isValid():
+                    current_file_path = self.ui.model.get_file_path(current_index) if self.ui and self.ui.model else ""
+
+            # 如果还是没有当前文件路径，尝试从主窗口的预览面板获取
+            if not current_file_path:
+                main_window = self.window()
+                if main_window and hasattr(main_window, 'preview_panel'):
+                    current_file_path = main_window.preview_panel.current_file_path
+
+            if not current_file_path:
+                logger.warning("无法获取当前文件路径，无法切换")
                 return
 
             # 收集所有文件
@@ -1977,11 +2018,12 @@ class FileManagerPanel(QWidget):
             # 查找当前文件在列表中的位置
             current_pos = -1
             for i, file_info in enumerate(all_files):
-                if file_info['path'] == current_path:
+                if file_info['path'] == current_file_path:
                     current_pos = i
                     break
 
             if current_pos == -1:
+                logger.warning(f"当前文件不在文件列表中: {current_file_path}")
                 return
 
             # 查找前一个支持的文件
@@ -2000,24 +2042,36 @@ class FileManagerPanel(QWidget):
                     return
                 prev_pos -= 1
 
+            logger.info("已经是第一个文件，无法继续向前切换")
+
         except Exception as e:
             logger.error(f"选择前一个文件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
 
-    def select_next_file(self):
+    def select_next_file(self, current_file_path=None):
         """
         选择后一个文件
+
+        Args:
+            current_file_path (str, optional): 当前文件路径，如果不提供则从TreeView获取
         """
         try:
             logger.info("选择后一个文件")
-            # 获取当前选中的索引
-            current_index = self.ui.tree_view.currentIndex() if self.ui and self.ui.tree_view else None
-            if not current_index or not current_index.isValid():
-                return
 
-            # 获取当前文件路径
-            current_path = self.ui.model.get_file_path(current_index) if self.ui and self.ui.model else ""
-            if not current_path:
+            # 如果没有提供当前文件路径，则尝试从TreeView获取
+            if not current_file_path:
+                current_index = self.ui.tree_view.currentIndex() if self.ui and self.ui.tree_view else None
+                if current_index and current_index.isValid():
+                    current_file_path = self.ui.model.get_file_path(current_index) if self.ui and self.ui.model else ""
+
+            # 如果还是没有当前文件路径，尝试从主窗口的预览面板获取
+            if not current_file_path:
+                main_window = self.window()
+                if main_window and hasattr(main_window, 'preview_panel'):
+                    current_file_path = main_window.preview_panel.current_file_path
+
+            if not current_file_path:
+                logger.warning("无法获取当前文件路径，无法切换")
                 return
 
             # 收集所有文件
@@ -2028,11 +2082,12 @@ class FileManagerPanel(QWidget):
             # 查找当前文件在列表中的位置
             current_pos = -1
             for i, file_info in enumerate(all_files):
-                if file_info['path'] == current_path:
+                if file_info['path'] == current_file_path:
                     current_pos = i
                     break
 
             if current_pos == -1:
+                logger.warning(f"当前文件不在文件列表中: {current_file_path}")
                 return
 
             # 查找下一个支持的文件
@@ -2050,6 +2105,8 @@ class FileManagerPanel(QWidget):
                         self.algorithm_test_dialog.set_current_file(next_file_info['path'])
                     return
                 next_pos += 1
+
+            logger.info("已经是最后一个文件，无法继续向后切换")
 
         except Exception as e:
             logger.error(f"选择后一个文件时发生异常: {str(e)}")
@@ -2277,6 +2334,22 @@ class FileManagerPanel(QWidget):
         except Exception as e:
             logger.error(f"刷新视图时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
+
+    def _refresh_and_restore(self, expanded_paths):
+        """
+        问题1修复：统一的刷新并恢复展开状态方法
+
+        Args:
+            expanded_paths (set): 需要恢复的展开路径集合
+        """
+        # 刷新视图
+        if self.imported_root_paths:
+            valid_paths = [path for path in self.imported_root_paths if os.path.exists(path)]
+            self.ui.set_root_paths(valid_paths)
+
+        # 恢复展开状态
+        self._restore_expanded_paths(expanded_paths)
+
 
     def _get_expanded_paths(self):
         """
@@ -2574,22 +2647,79 @@ class FileManagerPanel(QWidget):
 
     def delete_selected_file(self):
         """
-        【重构】删除选中的文件(通过Delete键)，删除后切换到下一个文件并保持展开状态
+        删除选中的文件，支持单个和批量删除
         """
         try:
-            file_path = self.ui.get_selected_path()
-            if not file_path or not os.path.exists(file_path):
-                QMessageBox.warning(self, "警告", "请选择一个有效的文件或文件夹!")
-                logger.warning("尝试删除无效的文件或文件夹")
+            if not self.ui or not self.ui.tree_view:
                 return
 
-            # 问题1修复：使用统一的删除方法，保持展开状态
-            self._delete_file_with_navigation(file_path)
+            # 获取所有选中的索引
+            selected_indexes = self.ui.tree_view.selectedIndexes()
+            if not selected_indexes:
+                QMessageBox.warning(self, "警告", "请先选择要删除的文件或文件夹!")
+                logger.warning("尝试删除但没有选中任何项目")
+                return
+
+            # 去重，只保留第0列的索引
+            unique_indexes = [idx for idx in selected_indexes if idx.column() == 0]
+            if not unique_indexes:
+                QMessageBox.warning(self, "警告", "请先选择要删除的文件或文件夹!")
+                return
+
+            # 获取选中的文件路径
+            selected_paths = []
+            for index in unique_indexes:
+                file_path = self.ui.model.get_file_path(index) if self.ui.model else ""
+                if file_path and os.path.exists(file_path):
+                    selected_paths.append(file_path)
+
+            if not selected_paths:
+                QMessageBox.warning(self, "警告", "请选择有效的文件或文件夹!")
+                return
+
+            # 判断是单个删除还是批量删除
+            if len(selected_paths) == 1:
+                # 单个删除
+                file_path = selected_paths[0]
+                file_name = os.path.basename(file_path)
+                reply = QMessageBox.question(
+                    self, "确认",
+                    f"确定要删除 '{file_name}' 吗?\n(文件将被移动到回收站)",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+            else:
+                # 批量删除
+                reply = QMessageBox.question(
+                    self, "确认",
+                    f"确定要删除选中的 {len(selected_paths)} 个项目吗?\n(文件将被移动到回收站)",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            # 保存当前展开状态
+            expanded_paths = self._get_expanded_paths()
+
+            # 执行删除操作
+            for file_path in selected_paths:
+                try:
+                    self.move_to_recycle_bin(file_path)
+                    logger.info(f"文件已移动到回收站: {file_path}")
+                except Exception as e:
+                    logger.error(f"删除文件 {file_path} 时发生异常: {str(e)}")
+                    QMessageBox.warning(self, "警告", f"删除文件 {os.path.basename(file_path)} 时出错: {str(e)}")
+
+            # 刷新视图并恢复展开状态
+            self._refresh_and_restore(expanded_paths)
+
+            logger.info(f"删除完成，共删除 {len(selected_paths)} 个项目")
 
         except Exception as e:
             logger.error(f"删除文件时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"删除文件时发生异常: {str(e)}")
+
 
     def show_context_menu(self, file_path, position):
         """
@@ -2649,7 +2779,7 @@ class FileManagerPanel(QWidget):
 
                 # 添加删除选项(适用于文件和文件夹)
                 delete_action = QAction("删除", self)
-                delete_action.triggered.connect(lambda: self.delete_file(file_path))
+                delete_action.triggered.connect(lambda: self._delete_file_direct(file_path))
                 context_menu.addAction(delete_action)
 
             # 在鼠标位置显示菜单
@@ -2662,6 +2792,28 @@ class FileManagerPanel(QWidget):
             logger.error(f"显示上下文菜单时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"显示上下文菜单时发生异常: {str(e)}")
+
+    def _delete_file_direct(self, file_path):
+        """
+        直接删除指定文件的方法，用于右键菜单调用
+
+        Args:
+            file_path (str): 要删除的文件路径
+        """
+        try:
+            if not file_path or not os.path.exists(file_path):
+                QMessageBox.warning(self, "警告", "请选择一个有效的文件或文件夹!")
+                logger.warning("尝试删除无效的文件或文件夹")
+                return
+
+            # 先选中该文件，然后调用统一的删除方法
+            self._select_file_by_path(file_path)
+            self.delete_selected_file()
+
+        except Exception as e:
+            logger.error(f"删除文件时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"删除文件时发生异常: {str(e)}")
 
     def is_in_recycle_bin(self, file_path):
         """
@@ -2689,63 +2841,6 @@ class FileManagerPanel(QWidget):
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             return False
 
-    def delete_file(self, file_path):
-        """
-        【重构】删除文件(移动到回收站)，删除后切换到下一个文件并保持展开状态
-
-        Args:
-            file_path (str): 要删除的文件路径
-        """
-        try:
-            if not file_path or not os.path.exists(file_path):
-                QMessageBox.warning(self, "警告", "请选择一个有效的文件或文件夹!")
-                logger.warning("尝试删除无效的文件或文件夹")
-                return
-
-            # 问题1修复：使用统一的删除方法，保持展开状态
-            self._delete_file_with_navigation(file_path)
-
-        except Exception as e:
-            logger.error(f"删除文件时发生异常: {str(e)}")
-            logger.error(f"异常详情:\n{traceback.format_exc()}")
-            QMessageBox.critical(self, "错误", f"删除文件时发生异常: {str(e)}")
-
-    def _delete_file_with_navigation(self, file_path):
-        """
-        问题1修复：统一的删除方法，包含保存/恢复展开状态逻辑
-
-        Args:
-            file_path (str): 要删除的文件路径
-        """
-        # 1. 保存当前展开状态
-        expanded_paths = self._get_expanded_paths()
-
-        # 2. 查找下一个文件(在删除前)
-        next_file_path = self._find_next_file(file_path)
-
-        # 3. 确认删除
-        reply = QMessageBox.question(
-            self, "确认",
-            f"确定要删除 '{os.path.basename(file_path)}' 吗?\n(文件将被移动到回收站)",
-            QMessageBox.Yes | QMessageBox.No
-        )
-
-        if reply != QMessageBox.Yes:
-            return
-
-        # 4. 执行删除
-        self.move_to_recycle_bin(file_path)
-        logger.info(f"文件已移动到回收站: {file_path}")
-
-        # 5. 刷新视图并恢复展开状态
-        self._refresh_and_restore(expanded_paths)
-
-        # 6. 选中并预览下一个文件(延迟执行)
-        if next_file_path:
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(200, lambda: self._select_and_preview_file(next_file_path))
-
-        logger.info(f"删除完成: {file_path}")
 
     def _refresh_and_restore(self, expanded_paths):
         """
@@ -3080,8 +3175,14 @@ class FileManagerPanel(QWidget):
             a0: 键盘事件
         """
         try:
+            # 检查是否是Delete键
+            if a0 and a0.key() == Qt.Key.Key_Delete:
+                # 调用删除方法
+                self.delete_selected_file()
+                return
+
             # 检查是否是回车键
-            if a0 and a0.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            elif a0 and a0.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 # 如果有确认对话框打开，则模拟点击"是"按钮
                 focused_widget = self.focusWidget()
                 if isinstance(focused_widget, QMessageBox):
