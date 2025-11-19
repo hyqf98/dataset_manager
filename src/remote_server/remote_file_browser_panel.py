@@ -4,13 +4,15 @@ from typing import Optional
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTreeWidget, 
                               QTreeWidgetItem, QHeaderView, QMessageBox, QLabel, QComboBox,
                               QTextEdit, QDialog, QDialogButtonBox, QSplitter, QMenu,
-                              QInputDialog, QFileDialog)
-from PyQt6.QtGui import QAction
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QContextMenuEvent
+                              QInputDialog, QFileDialog, QScrollArea)
+from PyQt6.QtGui import QAction, QPixmap, QFont
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl, QEvent
+from PyQt6.QtMultimediaWidgets import QVideoWidget
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from .server_config import ServerConfig, ServerConfigManager
 from .ssh_client import SSHClient
 from ..logging_config import logger
+# Removed PreviewPanel import
 
 
 class RemoteFileLoadWorker(QThread):
@@ -293,6 +295,16 @@ class RemoteFileBrowserPanel(QWidget):
         self.ssh_client = None
         self.current_server = None
         self.current_path = "/"
+        self.preview_panel = None
+        self.current_preview_list = []
+        self.current_preview_index = -1
+        self.temp_cache = {}
+        # 预览相关状态
+        self.image_zoom_factor = 1.0
+        self.image_pixmap = None
+        self.current_text_editor = None
+        self.current_remote_path = None
+        self.current_temp_video_path = None
         self.init_ui()
         self.load_servers()
         
@@ -301,20 +313,10 @@ class RemoteFileBrowserPanel(QWidget):
         初始化界面
         """
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
         
-        # 标题
-        title_label = QLabel("远程文件浏览器")
-        title_label.setStyleSheet("""
-            QLabel {
-                font-size: 16px;
-                font-weight: bold;
-                padding: 5px;
-                border-bottom: 1px solid #ccc;
-            }
-        """)
-        layout.addWidget(title_label)
+        # 紧凑布局：移除标题栏
         
         # 服务器选择区域
         server_layout = QHBoxLayout()
@@ -381,11 +383,11 @@ class RemoteFileBrowserPanel(QWidget):
             }
         """)
         
-        self.up_btn = QPushButton("⬆ 上级目录")
+        self.up_btn = QPushButton("上级")
         self.up_btn.clicked.connect(self.go_up)
         self.up_btn.setEnabled(False)
         
-        self.refresh_btn = QPushButton("🔄 刷新")
+        self.refresh_btn = QPushButton("刷新")
         self.refresh_btn.clicked.connect(self.refresh_directory)
         self.refresh_btn.setEnabled(False)
         
@@ -427,17 +429,70 @@ class RemoteFileBrowserPanel(QWidget):
         
         header = self.file_tree.header()
         if header:
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+            self.file_tree.setColumnWidth(0, 900)
             header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
             header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
             header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-            
-        layout.addWidget(self.file_tree)
         
-        # 状态栏
-        self.status_label = QLabel("请选择服务器并连接")
-        self.status_label.setStyleSheet("color: #666; padding: 5px;")
-        layout.addWidget(self.status_label)
+        # 添加选择变化联动预览
+        self.file_tree.itemSelectionChanged.connect(self.on_item_selection_changed)
+        
+        # 使用分割器，左侧列表，右侧预览
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setObjectName("remote_splitter")
+        splitter.addWidget(self.file_tree)
+        
+        # 右侧预览容器
+        right_container = QWidget()
+        right_layout = QVBoxLayout(right_container)
+        right_layout.setContentsMargins(5, 5, 5, 5)
+        right_layout.setSpacing(5)
+        
+        # 顶部导航按钮
+        nav_layout = QHBoxLayout()
+        nav_layout.setContentsMargins(0, 0, 0, 0)
+        nav_layout.setSpacing(5)
+        self.prev_btn = QPushButton("上一个")
+        self.next_btn = QPushButton("下一个")
+        for btn in [self.prev_btn, self.next_btn]:
+            btn.setStyleSheet("QPushButton { padding: 4px 8px; font-size: 12px; }")
+        self.prev_btn.clicked.connect(self.navigate_prev)
+        self.next_btn.clicked.connect(self.navigate_next)
+        nav_layout.addWidget(self.prev_btn)
+        nav_layout.addWidget(self.next_btn)
+        nav_layout.addStretch()
+        right_layout.addLayout(nav_layout)
+        
+        self.preview_scroll = QScrollArea()
+        self.preview_scroll.setWidgetResizable(True)
+        self.preview_scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # 安装事件过滤器支持图片缩放
+        self.preview_scroll.viewport().installEventFilter(self)
+        right_layout.addWidget(self.preview_scroll, 1)
+        
+        # 保存按钮（仅文本编辑时启用）
+        self.save_btn = QPushButton("保存")
+        self.save_btn.setEnabled(False)
+        self.save_btn.setStyleSheet("QPushButton { padding: 4px 8px; font-size: 12px; }")
+        self.save_btn.clicked.connect(self.save_current_text)
+        nav_layout.addWidget(self.save_btn)
+        
+        splitter.addWidget(right_container)
+        splitter.setSizes([600, 1000])
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 3)
+        # 增大左右区域的最小宽度，提升默认显示尺寸
+        self.file_tree.setMinimumWidth(600)
+        right_container.setMinimumWidth(1000)
+        layout.addWidget(splitter)
+        
+        self.setMinimumWidth(1700)
+        self.setMinimumHeight(950)
+        
+        # 状态栏（不在界面中显示）
+        self.status_label = QLabel()
+        self.status_label.hide()
         
     def load_servers(self):
         """
@@ -552,7 +607,7 @@ class RemoteFileBrowserPanel(QWidget):
                 })
                 
             self.path_edit.setText(self.current_path)
-            self.status_label.setText(f"已加载 {len(files)} 个项目")
+            pass
         except Exception as e:
             self.status_label.setText("加载失败")
             QMessageBox.critical(self, "错误", f"读取目录时发生错误：{str(e)}")
@@ -583,34 +638,37 @@ class RemoteFileBrowserPanel(QWidget):
             
         return f"{size_bytes:.1f} {size_names[i]}"
         
+    def on_item_selection_changed(self):
+        """
+        当选中项变化时，联动右侧预览
+        """
+        item = self.file_tree.currentItem()
+        if not item:
+            return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        if data['is_directory']:
+            # 预览当前目录的第一项
+            self.preview_directory(data['path'])
+        else:
+            self.preview_remote_file(data['path'])
+            
     def on_item_double_clicked(self, item, column):
         """
-        处理项双击事件
+        双击进入目录或预览文件
         """
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if not data:
             return
-            
         if data['is_directory']:
-            # 进入子目录
+            # 进入子目录并刷新，同时在右侧显示第一项预览
             self.current_path = data['path']
             self.refresh_directory()
+            self.preview_directory(self.current_path)
         else:
-            # 打开文件编辑器
-            self.edit_file(data['path'])
-            
-    def go_up(self):
-        """
-        返回上级目录
-        """
-        if self.current_path != "/":
-            # 移除最后一个路径部分
-            parts = self.current_path.strip("/").split("/")
-            if len(parts) > 1:
-                self.current_path = "/" + "/".join(parts[:-1])
-            else:
-                self.current_path = "/"
-            self.refresh_directory()
+            # 直接在右侧预览文件
+            self.preview_remote_file(data['path'])
             
     def show_context_menu(self, position):
         """
@@ -693,6 +751,19 @@ class RemoteFileBrowserPanel(QWidget):
         viewport = self.file_tree.viewport()
         if viewport:
             menu.exec(viewport.mapToGlobal(position))
+        
+    def go_up(self):
+        """
+        返回上级目录，并联动右侧预览
+        """
+        if self.current_path != "/":
+            parts = self.current_path.strip("/").split("/")
+            if len(parts) > 1:
+                self.current_path = "/" + "/".join(parts[:-1])
+            else:
+                self.current_path = "/"
+            self.refresh_directory()
+            self.preview_directory(self.current_path)
         
     def enter_directory(self, path):
         """
@@ -921,3 +992,206 @@ class RemoteFileBrowserPanel(QWidget):
         except Exception as e:
             self.status_label.setText("删除失败")
             QMessageBox.critical(self, "错误", f"删除{item_type}时发生错误：{str(e)}")
+        
+        # ===== 追加：远程预览相关方法 =====
+        
+    def preview_directory(self, remote_dir: str):
+        """
+        预览目录下的首个可预览资源，并构建切换列表
+        """
+        if not self.ssh_client:
+            return
+        try:
+            items = self.ssh_client.list_remote_files(remote_dir)
+            exts = self.get_previewable_extensions()
+            files = []
+            for filename, _, _, is_directory in items:
+                if not is_directory:
+                    _, ext = os.path.splitext(filename)
+                    if ext.lower() in exts:
+                        files.append(f"{remote_dir}/{filename}".replace("//", "/"))
+            self.current_preview_list = sorted(files)
+            # 显示第一项
+            if self.current_preview_list:
+                self.current_preview_index = 0
+                self.preview_remote_file(self.current_preview_list[0])
+            else:
+                # 没有可预览文件
+                txt = QTextEdit()
+                txt.setReadOnly(True)
+                txt.setPlainText("该目录下没有可预览的资源")
+                self.preview_scroll.setWidget(txt)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"读取目录预览时发生错误：{str(e)}")
+        
+    def preview_remote_file(self, remote_path: str):
+        """
+        下载远程文件到本地临时路径并在右侧面板预览
+        """
+        if not self.ssh_client:
+            QMessageBox.warning(self, "警告", "请先连接到服务器")
+            return
+        try:
+            # 构建当前目录的预览列表（若未构建）
+            dir_path = os.path.dirname(remote_path)
+            if not self.current_preview_list or not any(p.startswith(dir_path) for p in self.current_preview_list):
+                self.preview_directory(dir_path)
+            # 更新当前索引
+            if remote_path in self.current_preview_list:
+                self.current_preview_index = self.current_preview_list.index(remote_path)
+            # 判定类型并直接从内存显示
+            _, ext = os.path.splitext(remote_path)
+            ext = ext.lower()
+            image_exts = {'.jpg', '.jpeg', '.png', '.bmp', '.gif'}
+            text_exts = {'.txt', '.json', '.xml', '.py', '.yaml', '.yml'}
+            video_exts = {'.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv'}
+            # 清理旧预览控件，避免已删除对象被复用
+            old_widget = self.preview_scroll.takeWidget()
+            if old_widget:
+                old_widget.deleteLater()
+            # 记录当前路径
+            self.current_remote_path = remote_path
+            if ext in image_exts:
+                self.image_pixmap = None
+                self.image_zoom_factor = 1.0
+                data = self.ssh_client.read_remote_file_bytes(remote_path)
+                pixmap = QPixmap()
+                if not pixmap.loadFromData(data):
+                    QMessageBox.critical(self, "错误", "图片数据加载失败")
+                    return
+                label = QLabel()
+                label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                viewport = self.preview_scroll.viewport()
+                if viewport and pixmap.width() > 0 and pixmap.height() > 0:
+                    scaled = pixmap.scaled(viewport.width()-10, viewport.height()-10, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    label.setPixmap(scaled)
+                else:
+                    label.setPixmap(pixmap)
+                label.adjustSize()
+                self.preview_scroll.setWidget(label)
+                # 保存原图用于缩放
+                self.image_pixmap = pixmap
+            elif ext in text_exts:
+                content = self.ssh_client.read_remote_text(remote_path)
+                try:
+                    if ext == '.json':
+                        import json
+                        content = json.dumps(json.loads(content), indent=2, ensure_ascii=False)
+                    elif ext == '.xml':
+                        import xml.dom.minidom as minidom
+                        dom = minidom.parseString(content)
+                        content = '\n'.join([line for line in dom.toprettyxml(indent='  ').split('\n') if line.strip()])
+                except Exception:
+                    pass
+                txt = QTextEdit()
+                txt.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+                txt.setReadOnly(False)
+                txt.setFont(QFont("Courier New", 12))
+                txt.setPlainText(content)
+                txt.textChanged.connect(self.on_text_modified)
+                self.current_text_editor = txt
+                self.save_btn.setEnabled(False)
+                self.preview_scroll.setWidget(txt)
+            elif ext in video_exts:
+                # 视频播放（将字节写入临时文件供QMediaPlayer播放）
+                try:
+                    import tempfile
+                    import os as os_module
+                    data = self.ssh_client.read_remote_file_bytes(remote_path)
+                    # 清理旧临时视频
+                    if self.current_temp_video_path and os_module.path.exists(self.current_temp_video_path):
+                        try:
+                            os_module.unlink(self.current_temp_video_path)
+                        except Exception:
+                            pass
+                    fd, temp_path = tempfile.mkstemp(prefix="remote_video_", suffix=ext)
+                    with os_module.fdopen(fd, 'wb') as f:
+                        f.write(data)
+                    self.current_temp_video_path = temp_path
+                    video_widget = QVideoWidget()
+                    player = QMediaPlayer()
+                    audio = QAudioOutput()
+                    player.setAudioOutput(audio)
+                    player.setVideoOutput(video_widget)
+                    player.setSource(QUrl.fromLocalFile(temp_path))
+                    player.play()
+                    self.preview_scroll.setWidget(video_widget)
+                except Exception:
+                    info = QTextEdit()
+                    info.setReadOnly(True)
+                    info.setPlainText("视频播放暂不可用（依赖QtMultimedia）")
+                    self.preview_scroll.setWidget(info)
+            else:
+                info = QTextEdit()
+                info.setReadOnly(True)
+                info.setPlainText("暂不支持该文件类型预览")
+                self.preview_scroll.setWidget(info)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"预览远程文件时发生错误：{str(e)}")
+        
+    def on_text_modified(self):
+        """文本编辑器内容修改，启用保存按钮"""
+        if self.current_text_editor:
+            self.save_btn.setEnabled(True)
+        
+    def save_current_text(self):
+        """保存当前文本内容到远程文件"""
+        if not self.ssh_client or not self.current_text_editor or not self.current_remote_path:
+            return
+        try:
+            content = self.current_text_editor.toPlainText()
+            # JSON/XML校验可选，这里直接保存
+            from .ssh_client import SSHClient
+            self.ssh_client.write_remote_text(self.current_remote_path, content)
+            self.save_btn.setEnabled(False)
+            QMessageBox.information(self, "成功", "保存成功")
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"保存失败：{str(e)}")
+        
+    def navigate_prev(self):
+        """切换到上一个资源"""
+        if not self.current_preview_list:
+            return
+        if self.current_preview_index <= 0:
+            self.current_preview_index = 0
+        else:
+            self.current_preview_index -= 1
+        self.preview_remote_file(self.current_preview_list[self.current_preview_index])
+        
+    def navigate_next(self):
+        """切换到下一个资源"""
+        if not self.current_preview_list:
+            return
+        if self.current_preview_index >= len(self.current_preview_list) - 1:
+            self.current_preview_index = len(self.current_preview_list) - 1
+        else:
+            self.current_preview_index += 1
+        self.preview_remote_file(self.current_preview_list[self.current_preview_index])
+        
+    def eventFilter(self, obj, event):
+        """支持Ctrl/Cmd+滚轮对图片进行缩放"""
+        if obj == self.preview_scroll.viewport() and event.type() == QEvent.Type.Wheel:
+            # 仅在当前为图片预览时缩放
+            widget = self.preview_scroll.widget()
+            modifiers = event.modifiers()
+            if isinstance(widget, QLabel) and self.image_pixmap is not None and (
+                modifiers == Qt.KeyboardModifier.ControlModifier or modifiers == Qt.KeyboardModifier.MetaModifier
+            ):
+                delta = event.angleDelta().y()
+                step = 0.1
+                if delta > 0:
+                    self.image_zoom_factor *= (1 + step)
+                else:
+                    self.image_zoom_factor /= (1 + step)
+                self.image_zoom_factor = max(0.1, min(self.image_zoom_factor, 5.0))
+                new_w = int(self.image_pixmap.width() * self.image_zoom_factor)
+                new_h = int(self.image_pixmap.height() * self.image_zoom_factor)
+                scaled = self.image_pixmap.scaled(new_w, new_h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                widget.setPixmap(scaled)
+                widget.adjustSize()
+                return True
+        return super().eventFilter(obj, event)
+        
+    def get_previewable_extensions(self):
+        """获取可预览扩展名集合(图片+文本+视频)"""
+        return set(['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.txt', '.json', '.xml', '.py', '.yaml', '.yml', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv'])

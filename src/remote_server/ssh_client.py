@@ -127,15 +127,64 @@ class SSHClient(QObject):
             logger.error(error_msg)
             raise Exception(error_msg)
 
-    def set_overwrite_policy(self, policy: str):
+    def read_remote_file_bytes(self, remote_path: str) -> bytes:
         """
-        设置文件覆盖策略
+        以内存方式读取远程文件的二进制内容
 
         Args:
-            policy (str): 覆盖策略 ('ask', 'overwrite_all', 'skip_all')
+            remote_path (str): 远程文件路径
+        Returns:
+            bytes: 文件的二进制数据
         """
-        self.overwrite_policy = policy
-        logger.info(f"设置文件覆盖策略: {policy}")
+        try:
+            if not self.sftp_client:
+                raise Exception("SFTP客户端未初始化")
+            with self.sftp_client.open(remote_path, 'rb') as f:
+                return f.read()
+        except Exception as e:
+            error_msg = f"读取远程文件(二进制)失败: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+
+    def read_remote_text(self, remote_path: str, encoding: str = 'utf-8') -> str:
+        """
+        以内存方式读取远程文本内容
+
+        Args:
+            remote_path (str): 远程文件路径
+            encoding (str): 文本编码，默认utf-8
+        Returns:
+            str: 文本内容
+        """
+        try:
+            if not self.sftp_client:
+                raise Exception("SFTP客户端未初始化")
+            with self.sftp_client.open(remote_path, 'rb') as f:
+                data = f.read()
+            try:
+                return data.decode(encoding)
+            except UnicodeDecodeError:
+                return data.decode('utf-8', errors='ignore')
+        except Exception as e:
+            error_msg = f"读取远程文本失败: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+
+    def write_remote_text(self, remote_path: str, content: str, encoding: str = 'utf-8') -> bool:
+        """
+        以内存方式将文本写入远程文件（覆盖写入）
+        """
+        try:
+            if not self.sftp_client:
+                raise Exception("SFTP客户端未初始化")
+            with self.sftp_client.open(remote_path, 'wb') as f:
+                f.write(content.encode(encoding))
+            logger.info(f"写入远程文本成功: {remote_path}")
+            return True
+        except Exception as e:
+            error_msg = f"写入远程文本失败: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
 
     def check_remote_file_exists(self, remote_path: str) -> bool:
         """
@@ -330,29 +379,27 @@ class SSHClient(QObject):
             logger.error(error_msg)
             raise Exception(error_msg)
 
-    def create_remote_file(self, remote_path: str, content: str = "") -> bool:
+    def write_remote_text(self, remote_path: str, content: str, encoding: str = 'utf-8') -> bool:
         """
-        在远程服务器创建文件
+        以内存方式将文本写入远程文件（覆盖写入）
 
         Args:
             remote_path (str): 远程文件路径
-            content (str): 文件内容
-
+            content (str): 文本内容
+            encoding (str): 编码，默认utf-8
         Returns:
-            bool: 是否成功创建
+            bool: 是否写入成功
         """
         try:
             if not self.sftp_client:
                 raise Exception("SFTP客户端未初始化")
-
-            # 创建文件并写入内容
-            with self.sftp_client.open(remote_path, 'w') as f:
-                f.write(content)
-
-            logger.info(f"创建远程文件成功: {remote_path}")
+            # 以二进制方式写入，避免换行被自动转换
+            with self.sftp_client.open(remote_path, 'wb') as f:
+                f.write(content.encode(encoding))
+            logger.info(f"写入远程文本成功: {remote_path}")
             return True
         except Exception as e:
-            error_msg = f"创建远程文件失败: {str(e)}"
+            error_msg = f"写入远程文本失败: {str(e)}"
             logger.error(error_msg)
             raise Exception(error_msg)
 

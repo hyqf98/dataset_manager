@@ -1922,8 +1922,8 @@ class FileManagerPanel(QWidget):
             # 确认操作
             reply = QMessageBox.question(self, "确认",
                                          f"确定要从管理中移除 '{root_to_remove}' 吗?\n(注意：这只是从软件中移除管理，不会删除文件系统中的文件)",
-                                         QMessageBox.Yes | QMessageBox.No)
-            if reply == QMessageBox.Yes:
+                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.Yes:
                 # 从持久化存储中移除该路径
                 self.ui.remove_imported_path(root_to_remove)
 
