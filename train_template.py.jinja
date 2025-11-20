@@ -84,8 +84,12 @@ def train():
         return None
 
 
-def val():
-    """执行YOLO模型验证"""
+def val(run_index=None):
+    """执行YOLO模型验证
+    
+    Args:
+        run_index (int, optional): 指定训练运行索引(1,2,3...), 默认为None使用最新训练
+    """
     # 获取当前脚本所在目录
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
@@ -98,13 +102,32 @@ def val():
         return None
     
     # 查找最佳模型文件
-    best_model_path = os.path.join(current_dir, 'runs/detect/yolo_train/weights/best.pt')
-    if not os.path.exists(best_model_path):
-        # 尝试默认路径
-        best_model_path = 'runs/detect/train/weights/best.pt'
+    if run_index is not None:
+        # 使用指定索引的训练目录
+        if run_index == 1:
+            best_model_path = os.path.join(current_dir, 'runs/detect/train/weights/best.pt')
+        else:
+            best_model_path = os.path.join(current_dir, f'runs/detect/train{run_index}/weights/best.pt')
+    else:
+        # 默认使用最新的训练目录
+        best_model_path = os.path.join(current_dir, 'runs/detect/yolo_train/weights/best.pt')
         if not os.path.exists(best_model_path):
-            print("未找到最佳模型，请先训练模型")
-            return None
+            # 尝试默认路径
+            best_model_path = 'runs/detect/train/weights/best.pt'
+    
+    # 检查模型文件是否存在
+    if not os.path.exists(best_model_path):
+        print(f"未找到最佳模型: {best_model_path}")
+        # 列出可用的训练目录
+        runs_dir = os.path.join(current_dir, 'runs/detect')
+        if os.path.exists(runs_dir):
+            available_runs = [d for d in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, d)) and d.startswith('train')]
+            if available_runs:
+                print("可用的训练目录:")
+                for run in sorted(available_runs):
+                    print(f"  - {run}")
+        print("请先训练模型或指定正确的训练索引")
+        return None
     
     print(f"使用最佳模型: {best_model_path}")
     model = YOLO(best_model_path)
@@ -258,13 +281,15 @@ def main():
     parser = argparse.ArgumentParser(description='YOLO模型训练、验证和基准测试脚本')
     parser.add_argument('action', choices=['train', 'val', 'benchmark'], 
                         help='执行的操作: train(训练), val(验证), benchmark(基准测试)')
+    parser.add_argument('--run-index', type=int, choices=[1, 2, 3], 
+                        help='指定验证的训练索引 (1, 2, 3)')
     
     args = parser.parse_args()
     
     if args.action == 'train':
         train()
     elif args.action == 'val':
-        val()
+        val(run_index=args.run_index)
     elif args.action == 'benchmark':
         benchmark()
 
