@@ -30,7 +30,12 @@ on:
         default: false
         type: boolean
       create_release:
-        description: '创建 GitHub Release'
+        description: '创建 GitHub Release (构建完成后自动发布)'
+        required: false
+        default: false
+        type: boolean
+      release_draft:
+        description: '创建为草稿 Release (可后续编辑后发布)'
         required: false
         default: false
         type: boolean
@@ -159,13 +164,17 @@ jobs:
         path: dist/*.tar.gz
         retention-days: 30
   
-  # 创建 Release（如果是 tag 推送或手动触发时选择）
+  # 创建 Release（手动触发勾选或推送 tag 时自动创建）
   create_release:
     name: 🚀 Create Release
     needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
+    # 满足以下任一条件时创建 Release：
+    # 1. 手动触发且勾选了 create_release
+    # 2. 推送了版本标签 (v*)
     if: |
       always() &&
+      (needs.build-macos.result == 'success' || needs.build-windows.result == 'success' || needs.build-linux.result == 'success') &&
       ((github.event_name == 'workflow_dispatch' && inputs.create_release) ||
       startsWith(github.ref, 'refs/tags/v'))
     
@@ -174,48 +183,101 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         path: artifacts
-        merge-multiple: true
     
-    - name: 📋 Display structure
-      run: ls -R artifacts
+    - name: 📋 Display artifacts structure
+      run: |
+        echo "Artifacts downloaded:"
+        ls -R artifacts
+        echo ""
+        echo "Preparing files for release..."
+    
+    - name: 📦 Prepare release files
+      run: |
+        mkdir -p release_files
+        find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" \) -exec cp {} release_files/ \;
+        echo "Files to be released:"
+        ls -lh release_files/
     
     - name: 🚀 Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
-        name: Dataset Manager ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
-        draft: false
+        name: 📦 Dataset Manager ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        draft: ${{ github.event_name == 'workflow_dispatch' && inputs.release_draft || false }}
         prerelease: false
+        generate_release_notes: true
         body: |
           ## 📦 Dataset Manager Release
           
-          ### Version: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          ### 🎉 Version: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
           
-          ### 📥 Downloads:
-          - **macOS**: DatasetManager-macOS-*.zip
-          - **Windows**: DatasetManager-Windows-*.zip
-          - **Linux**: DatasetManager-Linux-*.tar.gz
-          
-          ### 🔧 Installation:
-          
-          **macOS:**
-          1. Download and extract the ZIP file
-          2. Move DatasetManager.app to Applications folder
-          3. Right-click and select "Open" (first time only)
-          
-          **Windows:**
-          1. Download and extract the ZIP file
-          2. Run DatasetManager.exe
-          
-          **Linux:**
-          1. Download and extract the tar.gz file
-          2. Make it executable: `chmod +x DatasetManager`
-          3. Run: `./DatasetManager`
+          **Built on:** ${{ github.event.head_commit.timestamp }}
+          **Commit:** ${{ github.sha }}
           
           ---
-          Built automatically by GitHub Actions
+          
+          ### 📥 Downloads:
+          
+          Choose the appropriate file for your operating system:
+          
+          | Platform | File | Description |
+          |----------|------|-------------|
+          | 🍎 **macOS** | `DatasetManager-macOS-*.zip` | Mac application bundle (.app) |
+          | 🪟 **Windows** | `DatasetManager-Windows-*.zip` | Windows executable (.exe) |
+          | 🐧 **Linux** | `DatasetManager-Linux-*.tar.gz` | Linux executable |
+          
+          ---
+          
+          ### 🔧 Installation Instructions:
+          
+          #### macOS:
+          1. Download `DatasetManager-macOS-*.zip`
+          2. Extract the ZIP file (double-click)
+          3. Move `DatasetManager.app` to your Applications folder
+          4. **First launch:** Right-click the app and select "Open" (this bypasses Gatekeeper)
+          5. For subsequent launches, just double-click the app
+          
+          #### Windows:
+          1. Download `DatasetManager-Windows-*.zip`
+          2. Extract the ZIP file (right-click → Extract All)
+          3. Run `DatasetManager.exe`
+          4. If Windows Defender shows a warning, click "More info" → "Run anyway"
+          
+          #### Linux:
+          1. Download `DatasetManager-Linux-*.tar.gz`
+          2. Extract: `tar -xzf DatasetManager-Linux-*.tar.gz`
+          3. Make executable: `chmod +x DatasetManager`
+          4. Run: `./DatasetManager`
+          
+          ---
+          
+          ### 📝 Release Notes:
+          
+          This release was automatically built and published by GitHub Actions.
+          
+          **What's included:**
+          - ✅ PyQt6-based GUI application
+          - ✅ Dataset management tools
+          - ✅ Auto-annotation features
+          - ✅ Model validation capabilities
+          - ✅ Remote server integration
+          
+          ---
+          
+          ### 🐛 Issues?
+          
+          If you encounter any problems, please [open an issue](../../issues/new).
+          
+          ---
+          
+          **Built automatically by GitHub Actions** ⚡
         files: |
-          artifacts/**/*.zip
-          artifacts/**/*.tar.gz
+          release_files/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: ✅ Release created successfully
+      run: |
+        echo "🎉 Release created successfully!"
+        echo "📦 Version: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}"
+        echo "🔗 View release: ${{ github.server_url }}/${{ github.repository }}/releases"
