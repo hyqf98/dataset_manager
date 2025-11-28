@@ -1,0 +1,179 @@
+name: Build Cross-Platform Apps
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # 手动触发，支持自定义参数
+    inputs:
+      version:
+        description: '版本号 (例如: 1.0.0)'
+        required: true
+        default: '1.0.0'
+        type: string
+      build_macos:
+        description: '构建 macOS 版本'
+        required: true
+        default: true
+        type: boolean
+      build_windows:
+        description: '构建 Windows 版本'
+        required: true
+        default: true
+        type: boolean
+      build_linux:
+        description: '构建 Linux 版本'
+        required: false
+        default: false
+        type: boolean
+      create_release:
+        description: '创建 GitHub Release'
+        required: false
+        default: false
+        type: boolean
+      python_version:
+        description: 'Python 版本'
+        required: false
+        default: '3.10'
+        type: string
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macOS
+            artifact_name: DatasetManager.app
+            artifact_path: dist/DatasetManager.app
+            enabled: ${{ github.event_name != 'workflow_dispatch' || inputs.build_macos }}
+          - os: windows-latest
+            platform: Windows
+            artifact_name: DatasetManager.exe
+            artifact_path: dist/DatasetManager.exe
+            enabled: ${{ github.event_name != 'workflow_dispatch' || inputs.build_windows }}
+          - os: ubuntu-latest
+            platform: Linux
+            artifact_name: DatasetManager
+            artifact_path: dist/DatasetManager
+            enabled: ${{ github.event_name != 'workflow_dispatch' || inputs.build_linux }}
+    
+    # 根据用户输入跳过不需要的平台
+    if: matrix.enabled
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+    
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ github.event_name == 'workflow_dispatch' && inputs.python_version || '3.10' }}
+    
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: 🔨 Build application
+      run: |
+        python -m PyInstaller --clean --noconfirm dataset_manager.spec
+      env:
+        APP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+    
+    - name: 📦 Package application (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        cd dist
+        zip -r DatasetManager-macOS-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}.zip DatasetManager.app
+        cd ..
+    
+    - name: 📦 Package application (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        cd dist
+        7z a DatasetManager-Windows-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}.zip DatasetManager.exe
+        cd ..
+      shell: bash
+    
+    - name: 📦 Package application (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        cd dist
+        tar -czf DatasetManager-Linux-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}.tar.gz DatasetManager
+        cd ..
+    
+    - name: ⬆️ Upload ${{ matrix.platform }} artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: DatasetManager-${{ matrix.platform }}-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        path: |
+          dist/*.zip
+          dist/*.tar.gz
+        retention-days: 30
+  
+  # 创建 Release（如果是 tag 推送或手动触发时选择）
+  create_release:
+    name: 🚀 Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.create_release) ||
+      startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: 📥 Download all artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts
+    
+    - name: 📋 Display structure
+      run: ls -R artifacts
+    
+    - name: 🚀 Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+        name: Dataset Manager ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        draft: false
+        prerelease: false
+        body: |
+          ## 📦 Dataset Manager Release
+          
+          ### Version: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          
+          ### 📥 Downloads:
+          - **macOS**: DatasetManager-macOS-*.zip
+          - **Windows**: DatasetManager-Windows-*.zip
+          - **Linux**: DatasetManager-Linux-*.tar.gz
+          
+          ### 🔧 Installation:
+          
+          **macOS:**
+          1. Download and extract the ZIP file
+          2. Move DatasetManager.app to Applications folder
+          3. Right-click and select "Open" (first time only)
+          
+          **Windows:**
+          1. Download and extract the ZIP file
+          2. Run DatasetManager.exe
+          
+          **Linux:**
+          1. Download and extract the tar.gz file
+          2. Make it executable: `chmod +x DatasetManager`
+          3. Run: `./DatasetManager`
+          
+          ---
+          Built automatically by GitHub Actions
+        files: |
+          artifacts/**/*.zip
+          artifacts/**/*.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
