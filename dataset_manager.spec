@@ -24,69 +24,84 @@ a = Analysis(
     pathex=[str(project_root)],
     binaries=[],
     datas=[
-        # 添加资源文件
+        # 只添加必要的资源文件
         (str(project_root / 'train_template.py.jinja'), '.'),
         (str(project_root / 'models.txt'), '.'),
     ],
     hiddenimports=[
-        # 确保所有必要的模块都被包含
-        'PyQt6',
+        # 只包含必要的模块
         'PyQt6.QtCore',
         'PyQt6.QtGui',
         'PyQt6.QtWidgets',
         'PyQt6.QtMultimedia',
         'PyQt6.QtMultimediaWidgets',
-        'cv2',
-        'ultralytics',
-        'openai',
-        'paramiko',
-        'matplotlib.backends.backend_agg',
-        'jinja2',
-        'yaml',
-        'pandas',
     ],
-    hookspath=[str(project_root)],  # 添加自定义 hook 路径
+    hookspath=[str(project_root)],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        # 排除不需要的大型库和模块
-        'torch.distributions',
-        'torch.testing',
-        'torch.autograd.profiler',
-        'tensorboard',
-        'notebook',
-        'IPython',
-        'ipykernel',
-        'jupyter',
-        'test',
-        'tests',
-        'testing',
-        'unittest',
-        'setuptools',
-        'pip',
-        'wheel',
-        # 排除不需要的 matplotlib 后端
+        # ===== 开发和测试工具 =====
+        'test', 'tests', 'testing', 'unittest', 'pytest', '_pytest',
+        'setuptools', 'pip', 'wheel', 'pkg_resources',
+        'distutils', 'packaging',
+        
+        # ===== Jupyter/IPython =====
+        'IPython', 'ipykernel', 'jupyter', 'jupyter_client', 'jupyter_core',
+        'notebook', 'nbconvert', 'nbformat',
+        
+        # ===== PyTorch 大型模块 =====
+        'torch.distributions', 'torch.testing', 'torch._dynamo',
+        'torch.autograd.profiler', 'torch.profiler',
+        'torch.utils.tensorboard', 'torch.utils.bottleneck',
+        'torch.distributed', 'torch.distributed.rpc',
+        'torch.distributed.elastic', 'torch.distributed.pipeline',
+        'torch.distributed.fsdp', 'torch.distributed.optim',
+        'torch.distributed._shard', 'torch.distributed._tensor',
+        'torch.quantization', 'torch._inductor',
+        'torch.fx', 'torch.jit', 'torch.onnx',
+        
+        # ===== TensorBoard 和可视化 =====
+        'tensorboard', 'tensorboardX', 'tb_plugin',
+        
+        # ===== MLflow, Wandb 等追踪工具 =====
+        'wandb', 'mlflow', 'comet_ml', 'neptune',
+        'clearml', 'aim',
+        
+        # ===== Matplotlib 后端和工具 =====
+        'matplotlib.tests', 'matplotlib.testing',
         'matplotlib.backends.backend_qt5agg',
         'matplotlib.backends.backend_tkagg',
         'matplotlib.backends.backend_gtk3',
+        'matplotlib.backends.backend_gtk4',
         'matplotlib.backends.backend_wx',
-        # 排除不需要的科学计算库
-        'scipy.stats',
-        'scipy.sparse',
-        'scipy.signal',
-        # 排除开发工具
-        'pytest',
-        'sphinx',
-        'docutils',
-        # 排除 PyTorch 的 C++ 扩展和测试
-        'torch.testing',
-        'torch.utils.tensorboard',
-        'torch.distributed',
-        # 排除不需要的 CUDA 库（如果不使用 GPU）
-        'nvidia',
-        'cuda',
-        'cudnn',
-        'tensorrt',
+        'matplotlib.backends.backend_macosx',
+        'tkinter', 'Tkinter', '_tkinter',
+        
+        # ===== SciPy 大型模块 =====
+        'scipy.stats', 'scipy.sparse', 'scipy.signal',
+        'scipy.spatial', 'scipy.optimize', 'scipy.integrate',
+        'scipy.interpolate', 'scipy.ndimage',
+        
+        # ===== CUDA/GPU 相关 =====
+        'nvidia', 'nvidia.cuda_runtime', 'nvidia.cudnn',
+        'nvidia.cublas', 'nvidia.cufft', 'nvidia.curand',
+        'nvidia.cusolver', 'nvidia.cusparse', 'nvidia.nccl',
+        'cuda', 'cudnn', 'tensorrt', 'pycuda',
+        
+        # ===== Triton (PyTorch 编译器) =====
+        'triton', 'triton.language', 'triton.compiler',
+        
+        # ===== PIL/Pillow 不需要的格式 =====
+        'PIL.IcnsImagePlugin', 'PIL.MicImagePlugin',
+        'PIL.FpxImagePlugin', 'PIL.PsdImagePlugin',
+        
+        # ===== 文档和示例 =====
+        'sphinx', 'docutils', 'alabaster',
+        'cv2.data',  # OpenCV 示例数据
+        
+        # ===== 其他大型库 =====
+        'xmlrpc', 'pydoc', 'pydoc_data',
+        'multiprocessing.dummy',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
