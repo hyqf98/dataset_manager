@@ -1138,6 +1138,8 @@ class DatasetSplitConfigDialog(QDialog):
 
         # 表单布局
         form_layout = QFormLayout()
+        form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+        form_layout.setFormAlignment(Qt.AlignmentFlag.AlignLeft)
 
         # 配置名称
         self.name_edit = QLineEdit()
@@ -1200,7 +1202,7 @@ class DatasetSplitConfigDialog(QDialog):
 
         # 训练参数
         self.params_widget = QWidget()
-        self.params_widget.setVisible(False)
+        self.params_widget.setVisible(bool(self.config and self.config.generate_script))
         params_layout = QVBoxLayout(self.params_widget)
 
         self.train_params_edit = QTextEdit()

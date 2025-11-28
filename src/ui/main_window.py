@@ -22,6 +22,7 @@ from ..remote_server.remote_file_browser_panel import RemoteFileBrowserPanel
 
 # 添加日志分析面板导入
 from ..auto_annotation.log_analysis_panel import LogAnalysisPanel
+from ..auto_annotation.model_validation_panel import ModelValidationPanel
 
 class MainWindow(QMainWindow):
     """
@@ -222,6 +223,11 @@ class MainWindow(QMainWindow):
                     log_analysis_action = QAction('日志分析', self)
                     log_analysis_action.triggered.connect(self.open_log_analysis_panel)
                     dataset_split_menu.addAction(log_analysis_action)
+
+                    # 添加模型验证与对比菜单项
+                    model_validation_action = QAction('模型验证与对比', self)
+                    model_validation_action.triggered.connect(self.open_model_validation_panel)
+                    dataset_split_menu.addAction(model_validation_action)
 
                 # 文件上传菜单
                 file_upload_menu = menubar.addMenu('远程服务器管理')
@@ -762,6 +768,30 @@ class MainWindow(QMainWindow):
             logger.error(f"打开日志分析面板时发生异常: {str(e)}")
             logger.error(f"异常详情:\n{traceback.format_exc()}")
             QMessageBox.critical(self, "错误", f"打开日志分析面板时发生异常: {str(e)}")
+
+    def open_model_validation_panel(self):
+        """
+        打开模型验证与对比面板
+        """
+        try:
+            # 每次都创建新的实例，避免使用已销毁的对象
+            self.model_validation_panel = ModelValidationPanel()
+
+            # 创建对话框并显示面板
+            dialog = QDialog(self)
+            dialog.setWindowTitle("模型验证与对比")
+            layout = QHBoxLayout(dialog)
+            layout.addWidget(self.model_validation_panel)
+            dialog.resize(1400, 900)
+            dialog.exec()
+
+            # 清理引用，避免访问已销毁的对象
+            if hasattr(self, 'model_validation_panel'):
+                delattr(self, 'model_validation_panel')
+        except Exception as e:
+            logger.error(f"打开模型验证与对比面板时发生异常: {str(e)}")
+            logger.error(f"异常详情:\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"打开模型验证与对比面板时发生异常: {str(e)}")
 
     def eventFilter(self, a0, a1):  # type: ignore
         """
