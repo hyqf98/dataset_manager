@@ -27,9 +27,6 @@ a = Analysis(
         # 添加资源文件
         (str(project_root / 'train_template.py.jinja'), '.'),
         (str(project_root / 'models.txt'), '.'),
-        # 如果有图标文件，也添加进来
-        # (str(project_root / 'icon.icns'), '.'),  # macOS
-        # (str(project_root / 'icon.ico'), '.'),   # Windows
     ],
     hiddenimports=[
         # 确保所有必要的模块都被包含
@@ -43,20 +40,54 @@ a = Analysis(
         'ultralytics',
         'openai',
         'paramiko',
-        'matplotlib',
         'matplotlib.backends.backend_agg',
         'jinja2',
         'yaml',
         'pandas',
-        'numpy',
-        'PIL',
-        'torch',
-        'torchvision',
     ],
-    hookspath=[],
+    hookspath=[str(project_root)],  # 添加自定义 hook 路径
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # 排除不需要的大型库和模块
+        'torch.distributions',
+        'torch.testing',
+        'torch.autograd.profiler',
+        'tensorboard',
+        'notebook',
+        'IPython',
+        'ipykernel',
+        'jupyter',
+        'test',
+        'tests',
+        'testing',
+        'unittest',
+        'setuptools',
+        'pip',
+        'wheel',
+        # 排除不需要的 matplotlib 后端
+        'matplotlib.backends.backend_qt5agg',
+        'matplotlib.backends.backend_tkagg',
+        'matplotlib.backends.backend_gtk3',
+        'matplotlib.backends.backend_wx',
+        # 排除不需要的科学计算库
+        'scipy.stats',
+        'scipy.sparse',
+        'scipy.signal',
+        # 排除开发工具
+        'pytest',
+        'sphinx',
+        'docutils',
+        # 排除 PyTorch 的 C++ 扩展和测试
+        'torch.testing',
+        'torch.utils.tensorboard',
+        'torch.distributed',
+        # 排除不需要的 CUDA 库（如果不使用 GPU）
+        'nvidia',
+        'cuda',
+        'cudnn',
+        'tensorrt',
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -72,14 +103,14 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='DatasetManager',  # 使用统一的名称
+    name='DatasetManager',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
+    strip=True,  # 启用 strip 以移除调试符号
+    upx=True,  # 启用 UPX 压缩
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,  # 无控制台窗口（GUI应用）
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
