@@ -41,31 +41,10 @@ on:
         type: string
 
 jobs:
-  build:
-    name: Build on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            platform: macOS
-            artifact_name: DatasetManager.app
-            artifact_path: dist/DatasetManager.app
-            enabled: ${{ github.event_name != 'workflow_dispatch' || inputs.build_macos }}
-          - os: windows-latest
-            platform: Windows
-            artifact_name: DatasetManager.exe
-            artifact_path: dist/DatasetManager.exe
-            enabled: ${{ github.event_name != 'workflow_dispatch' || inputs.build_windows }}
-          - os: ubuntu-latest
-            platform: Linux
-            artifact_name: DatasetManager
-            artifact_path: dist/DatasetManager
-            enabled: ${{ github.event_name != 'workflow_dispatch' || inputs.build_linux }}
-    
-    # 根据用户输入跳过不需要的平台
-    if: matrix.enabled
+  build-macos:
+    name: Build on macOS
+    runs-on: macos-latest
+    if: github.event_name != 'workflow_dispatch' || inputs.build_macos
     
     steps:
     - name: 📥 Checkout code
@@ -88,45 +67,107 @@ jobs:
       env:
         APP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
     
-    - name: 📦 Package application (macOS)
-      if: matrix.os == 'macos-latest'
+    - name: 📦 Package application
       run: |
         cd dist
         zip -r DatasetManager-macOS-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}.zip DatasetManager.app
         cd ..
     
-    - name: 📦 Package application (Windows)
-      if: matrix.os == 'windows-latest'
+    - name: ⬆️ Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: DatasetManager-macOS-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        path: dist/*.zip
+        retention-days: 30
+  
+  build-windows:
+    name: Build on Windows
+    runs-on: windows-latest
+    if: github.event_name != 'workflow_dispatch' || inputs.build_windows
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+    
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ github.event_name == 'workflow_dispatch' && inputs.python_version || '3.10' }}
+    
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: 🔨 Build application
+      run: |
+        python -m PyInstaller --clean --noconfirm dataset_manager.spec
+      env:
+        APP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+    
+    - name: 📦 Package application
       run: |
         cd dist
         7z a DatasetManager-Windows-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}.zip DatasetManager.exe
         cd ..
       shell: bash
     
-    - name: 📦 Package application (Linux)
-      if: matrix.os == 'ubuntu-latest'
+    - name: ⬆️ Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: DatasetManager-Windows-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        path: dist/*.zip
+        retention-days: 30
+  
+  build-linux:
+    name: Build on Linux
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || inputs.build_linux
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v3
+    
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ github.event_name == 'workflow_dispatch' && inputs.python_version || '3.10' }}
+    
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: 🔨 Build application
+      run: |
+        python -m PyInstaller --clean --noconfirm dataset_manager.spec
+      env:
+        APP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+    
+    - name: 📦 Package application
       run: |
         cd dist
         tar -czf DatasetManager-Linux-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}.tar.gz DatasetManager
         cd ..
     
-    - name: ⬆️ Upload ${{ matrix.platform }} artifact
+    - name: ⬆️ Upload artifact
       uses: actions/upload-artifact@v3
       with:
-        name: DatasetManager-${{ matrix.platform }}-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
-        path: |
-          dist/*.zip
-          dist/*.tar.gz
+        name: DatasetManager-Linux-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        path: dist/*.tar.gz
         retention-days: 30
   
   # 创建 Release（如果是 tag 推送或手动触发时选择）
   create_release:
     name: 🚀 Create Release
-    needs: build
+    needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'workflow_dispatch' && inputs.create_release) ||
-      startsWith(github.ref, 'refs/tags/v')
+      always() &&
+      ((github.event_name == 'workflow_dispatch' && inputs.create_release) ||
+      startsWith(github.ref, 'refs/tags/v'))
     
     steps:
     - name: 📥 Download all artifacts
