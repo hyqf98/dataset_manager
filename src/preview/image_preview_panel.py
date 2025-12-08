@@ -251,33 +251,6 @@ class PolygonAnnotation(Annotation):
             for i in range(len(scaled_points)):
                 painter.drawLine(scaled_points[i], scaled_points[(i + 1) % len(scaled_points)])
 
-        # 如果被选中，绘制控制点（用于旋转和调整大小）
-        if self.selected:
-            handle_size = 3
-            painter.setPen(QPen(Qt.GlobalColor.green, 1, Qt.PenStyle.SolidLine))
-            painter.setBrush(Qt.GlobalColor.green)
-            
-            # 绘制四个角点，如果是正在旋转的控制点，用不同颜色高亮
-            corners = [
-                ('top_left', scaled_rect.topLeft()),
-                ('top_right', scaled_rect.topRight()),
-                ('bottom_left', scaled_rect.bottomLeft()),
-                ('bottom_right', scaled_rect.bottomRight())
-            ]
-            
-            for handle_name, corner in corners:
-                if rotating_handle and rotating_handle == handle_name:
-                    painter.setBrush(Qt.GlobalColor.yellow)
-                    painter.drawEllipse(corner, 5, 5)
-                    painter.setBrush(Qt.GlobalColor.green)
-                else:
-                    painter.drawEllipse(corner, handle_size, handle_size)
-            
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-        
-        # 恢复画布状态
-        painter.restore()
-
         # 如果被选中,绘制控制点
         if self.selected:
             painter.setPen(QPen(Qt.GlobalColor.green, 1, Qt.PenStyle.SolidLine))
@@ -418,6 +391,10 @@ class ImageLabel(QLabel):
         # 添加绘制优化标志
         self._last_scale_factor = 1.0
         self._needs_repaint = True
+        
+        # 添加滚轮事件节流定时器
+        self._wheel_timer = None
+        self._pending_scale_factor = None
 
     def focusInEvent(self, ev):
         """处理获得焦点事件"""
@@ -427,8 +404,14 @@ class ImageLabel(QLabel):
 
     def set_image(self, file_path):
         """设置图片并立即显示,标注异步加载"""
+        # 停止并清理滚轮缩放定时器,避免干扰新图片的加载
+        if self._wheel_timer and self._wheel_timer.isActive():
+            self._wheel_timer.stop()
+        self._pending_mouse_pos = None
+        
         self.file_path = file_path
         self._pixmap = QPixmap(file_path)
+        self.scaled_pixmap = None  # 清除缓存的缩放图片
         self.scale_factor = 1.0  # 重置缩放因子
         self.user_scaled = False  # 重置用户缩放标志
         self.zoom_count = 0  # 重置缩放计数器
@@ -601,28 +584,6 @@ class ImageLabel(QLabel):
         # 兼容不同操作系统的缩放快捷键
         # Windows/Linux使用Ctrl键,Mac使用Cmd键
         if a0.modifiers() == Qt.KeyboardModifier.ControlModifier or a0.modifiers() == Qt.KeyboardModifier.MetaModifier:
-            # 获取鼠标位置
-            mouse_pos = a0.position().toPoint()
-
-            # 记录缩放前的滚动位置
-            old_scale = self.scale_factor
-            old_scroll_x = 0
-            old_scroll_y = 0
-            scroll_area = None
-
-            # 获取滚动区域和当前滚动位置
-            parent_obj = self.parent()
-            if parent_obj and hasattr(parent_obj, 'horizontalScrollBar') and hasattr(parent_obj, 'verticalScrollBar'):
-                scroll_area = parent_obj
-                if hasattr(scroll_area, 'horizontalScrollBar') and scroll_area.horizontalScrollBar() is not None:
-                    old_scroll_x = scroll_area.horizontalScrollBar().value()
-                else:
-                    old_scroll_x = 0
-                if hasattr(scroll_area, 'verticalScrollBar') and scroll_area.verticalScrollBar() is not None:
-                    old_scroll_y = scroll_area.verticalScrollBar().value()
-                else:
-                    old_scroll_y = 0
-
             # Ctrl/Cmd+滚轮进行缩放,每次滚动缩放10%
             zoom_step = 0.1  # 每次滚动的缩放步长
             if a0.angleDelta().y() > 0:
@@ -637,57 +598,110 @@ class ImageLabel(QLabel):
 
             # 标记为用户手动缩放
             self.user_scaled = True
-
-            # 更新缩放图片缓存
-            self.update_scaled_pixmap()
-
-            # 更新图片标签大小
-            if self._pixmap:
-                scaled_width = int(self._pixmap.width() * self.scale_factor)
-                scaled_height = int(self._pixmap.height() * self.scale_factor)
-
-                # 如果有鼠标位置信息,调整滚动条使鼠标位置保持不变
-                new_scroll_x = 0
-                new_scroll_y = 0
-                if scroll_area:
-                    # 检查鼠标是否在图片区域内
-                    # 使用图片的实际尺寸来判断鼠标位置
-                    image_rect = QRect(0, 0, scaled_width, scaled_height)
-                    if image_rect.contains(mouse_pos):
-                        # 鼠标在图片区域内,围绕鼠标位置缩放
-                        # 计算鼠标在当前图片中的相对位置
-                        relative_x = (old_scroll_x + mouse_pos.x()) / (self._pixmap.width() * old_scale) if old_scale > 0 else 0
-                        relative_y = (old_scroll_y + mouse_pos.y()) / (self._pixmap.height() * old_scale) if old_scale > 0 else 0
-                    else:
-                        # 鼠标不在图片区域内,围绕图片中心缩放
-                        relative_x = 0.5
-                        relative_y = 0.5
-
-                    # 计算新的滚动位置,使指定位置保持不变
-                    new_center_x = relative_x * scaled_width
-                    new_center_y = relative_y * scaled_height
-
-                    # 设置新的滚动位置
-                    new_scroll_x = new_center_x - mouse_pos.x()
-                    new_scroll_y = new_center_y - mouse_pos.y()
-
-                # 设置图片标签大小
-                self.setFixedSize(scaled_width, scaled_height)
-
-                # 设置滚动条位置
-                if scroll_area:
-                    if hasattr(scroll_area, 'horizontalScrollBar') and scroll_area.horizontalScrollBar() is not None:
-                        scroll_area.horizontalScrollBar().setValue(int(new_scroll_x))
-                    if hasattr(scroll_area, 'verticalScrollBar') and scroll_area.verticalScrollBar() is not None:
-                        scroll_area.verticalScrollBar().setValue(int(new_scroll_y))
-
-                # 通知滚动区域内容大小已改变
-                self.updateGeometry()
-
-            self.update()
+            
+            # 使用节流机制延迟更新,避免阻塞主线程
+            self._schedule_scale_update(a0)
         else:
             # 普通滚轮事件交给父类处理(滚动视图)
             super().wheelEvent(a0)
+    
+    def _schedule_scale_update(self, event):
+        """调度缩放更新,使用节流机制避免频繁更新"""
+        # 保存待处理的缩放因子和鼠标位置
+        mouse_pos = event.position().toPoint()
+        
+        # 如果定时器已经存在,停止它
+        if self._wheel_timer and self._wheel_timer.isActive():
+            self._wheel_timer.stop()
+        
+        # 创建新的定时器,延迟50ms执行缩放更新
+        if not self._wheel_timer:
+            self._wheel_timer = QTimer()
+            self._wheel_timer.setSingleShot(True)
+            self._wheel_timer.timeout.connect(self._apply_scale_update)
+        
+        # 保存鼠标位置信息用于后续处理
+        self._pending_mouse_pos = mouse_pos
+        
+        # 启动定时器
+        self._wheel_timer.start(50)
+    
+    def _apply_scale_update(self):
+        """应用缩放更新"""
+        # 检查图片是否还存在，如果图片已经被清空或替换，则不应用缩放
+        if not self._pixmap or self._pixmap.isNull():
+            return
+        
+        # 检查是否有待处理的鼠标位置，如果没有说明已经被清理
+        if not hasattr(self, '_pending_mouse_pos') or self._pending_mouse_pos is None:
+            return
+        
+        # 获取滚动区域和当前滚动位置
+        old_scale = self._last_scale_factor
+        old_scroll_x = 0
+        old_scroll_y = 0
+        scroll_area = None
+        
+        parent_obj = self.parent()
+        if parent_obj and hasattr(parent_obj, 'horizontalScrollBar') and hasattr(parent_obj, 'verticalScrollBar'):
+            scroll_area = parent_obj
+            if hasattr(scroll_area, 'horizontalScrollBar') and scroll_area.horizontalScrollBar() is not None:
+                old_scroll_x = scroll_area.horizontalScrollBar().value()
+            else:
+                old_scroll_x = 0
+            if hasattr(scroll_area, 'verticalScrollBar') and scroll_area.verticalScrollBar() is not None:
+                old_scroll_y = scroll_area.verticalScrollBar().value()
+            else:
+                old_scroll_y = 0
+        
+        # 更新缩放图片缓存
+        self.update_scaled_pixmap()
+        
+        # 更新图片标签大小
+        scaled_width = int(self._pixmap.width() * self.scale_factor)
+        scaled_height = int(self._pixmap.height() * self.scale_factor)
+        
+        # 如果有鼠标位置信息,调整滚动条使鼠标位置保持不变
+        new_scroll_x = 0
+        new_scroll_y = 0
+        if scroll_area and hasattr(self, '_pending_mouse_pos'):
+            mouse_pos = self._pending_mouse_pos
+            # 检查鼠标是否在图片区域内
+            image_rect = QRect(0, 0, scaled_width, scaled_height)
+            if image_rect.contains(mouse_pos):
+                # 鼠标在图片区域内,围绕鼠标位置缩放
+                relative_x = (old_scroll_x + mouse_pos.x()) / (self._pixmap.width() * old_scale) if old_scale > 0 else 0
+                relative_y = (old_scroll_y + mouse_pos.y()) / (self._pixmap.height() * old_scale) if old_scale > 0 else 0
+            else:
+                # 鼠标不在图片区域内,围绕图片中心缩放
+                relative_x = 0.5
+                relative_y = 0.5
+            
+            # 计算新的滚动位置,使指定位置保持不变
+            new_center_x = relative_x * scaled_width
+            new_center_y = relative_y * scaled_height
+            
+            new_scroll_x = new_center_x - mouse_pos.x()
+            new_scroll_y = new_center_y - mouse_pos.y()
+        
+        # 设置图片标签大小
+        self.setFixedSize(scaled_width, scaled_height)
+        
+        # 设置滚动条位置
+        if scroll_area:
+            if hasattr(scroll_area, 'horizontalScrollBar') and scroll_area.horizontalScrollBar() is not None:
+                scroll_area.horizontalScrollBar().setValue(int(new_scroll_x))
+            if hasattr(scroll_area, 'verticalScrollBar') and scroll_area.verticalScrollBar() is not None:
+                scroll_area.verticalScrollBar().setValue(int(new_scroll_y))
+        
+        # 通知滚动区域内容大小已改变
+        self.updateGeometry()
+        
+        # 更新显示
+        self.update()
+        
+        # 清理待处理的鼠标位置，避免重复应用
+        self._pending_mouse_pos = None
 
     def load_yolo_annotations(self):
         """加载YOLO格式的标注文件(优化版本,减少文件系统操作)"""
@@ -2568,7 +2582,7 @@ class CustomScrollArea(QScrollArea):
     def wheelEvent(self, event):
         """处理鼠标滚轮事件,调整滚动灵敏度"""
         # 检查是否是Ctrl/Cmd+滚轮组合,如果是则传递给子组件处理
-        if event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier):
+        if event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier):
             # 直接将事件传递给子组件(ImageLabel)处理
             if self.widget() and hasattr(self.widget(), 'wheelEvent'):
                 self.widget().wheelEvent(event)
@@ -2580,7 +2594,7 @@ class CustomScrollArea(QScrollArea):
             vertical_scrollbar = self.verticalScrollBar()
 
             # 检查是否按住了Shift键,按住Shift键时进行水平滚动
-            if event.modifiers() & Qt.ShiftModifier:
+            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                 # 检查是否有水平滚动条且可见
                 if horizontal_scrollbar.isVisible():
                     # 调试信息

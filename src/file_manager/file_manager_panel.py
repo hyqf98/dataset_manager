@@ -2556,6 +2556,10 @@ class FileManagerPanel(QWidget):
             index: 被点击的项目索引
         """
         try:
+            # 确保tree_view获得焦点
+            if self.ui and self.ui.tree_view:
+                self.ui.tree_view.setFocus()
+            
             if index.isValid():
                 # 使用自定义模型的 get_file_path 方法
                 file_path = self.ui.model.get_file_path(index) if self.ui and self.ui.model else ""

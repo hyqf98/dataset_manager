@@ -73,12 +73,12 @@ class ServerConfigForm(QDialog):
 
         # 添加按钮
         buttons = QDialogButtonBox()
-        buttons.setStandardButtons(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)  # type: ignore
+        buttons.setStandardButtons(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         
         # 添加测试连接按钮
         self.test_connection_button = QPushButton("测试连接")
         self.test_connection_button.clicked.connect(self.test_connection)
-        buttons.addButton(self.test_connection_button, QDialogButtonBox.ActionRole)  # type: ignore
+        buttons.addButton(self.test_connection_button, QDialogButtonBox.ButtonRole.ActionRole)
         
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
